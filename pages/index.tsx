@@ -1,4 +1,5 @@
-import { FormEvent, useState } from "react";
+import type { FormEvent } from "react";
+import { useState } from "react";
 
 const phoneInputStyle = {
   border: "1px solid #d1d5db",
@@ -99,6 +100,7 @@ export default function Home() {
                 setShowSecondaryPhone((currentValue) => !currentValue);
                 if (showSecondaryPhone) {
                   setSecondaryPhone("");
+                  setSavedPhones((currentPhones) => currentPhones.slice(0, 1));
                 }
               }}
               style={{
