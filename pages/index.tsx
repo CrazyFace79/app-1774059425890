@@ -111,6 +111,7 @@ export default function Home() {
   const [target, setTarget] = useState<Place>(() => parseTargetFromUrl() || defaultTarget);
   const [shareMode] = useState(isShareMode);
   const [senderPhone] = useState(senderPhoneFromUrl);
+  const [surpriseMode, setSurpriseMode] = useState(true);
   const [copiedCoords, setCopiedCoords] = useState(false);
   const [location, setLocation] = useState<LocationState>({
     status: "idle",
@@ -172,7 +173,9 @@ export default function Home() {
       share: "1",
       from: phone,
     });
-    const message = `Estoy yendo a la playa. Abre esto y pulsa compartir ubicacion para que vaya directo: ${shareLink}`;
+    const message = surpriseMode
+      ? `Bro, pasame tu ubicacion exacta un momento para encontrarte sin dar vueltas. Te cuento en persona: ${shareLink}`
+      : `Estoy yendo a la playa. Abre esto y pulsa compartir ubicacion para que vaya directo: ${shareLink}`;
 
     window.open(whatsAppUrl(phone, message), "_blank", "noopener,noreferrer");
   }
@@ -220,7 +223,7 @@ export default function Home() {
 
         <main className="app compact">
           <section className="panel">
-            <p className="eyebrow">Tu colega te espera</p>
+            <p className="eyebrow">Te quieren encontrar</p>
             <h1>Comparte tu punto</h1>
             <p className="intro">
               Pulsa el boton y se abre WhatsApp con tu ubicacion en un enlace.
@@ -251,12 +254,12 @@ export default function Home() {
 
       <main className="app">
         <section className="panel">
-          <p className="eyebrow">Sin perderme</p>
+          <p className="eyebrow">Sorpresa sin perderme</p>
           <h1>Telefono, punto y GPS</h1>
           <p className="intro">
-            Mete su telefono, le mandas el enlace y cuando te devuelva su punto
-            le das a <strong>Iniciar viaje</strong>. Se abre Maps con GPS hasta
-            la ubicacion exacta.
+            Mete su telefono, le pides el punto sin contar el plan y cuando te
+            lo devuelva le das a <strong>Iniciar viaje</strong>. Maps te lleva
+            con GPS hasta la ubicacion exacta.
           </p>
 
           <label>
@@ -272,6 +275,15 @@ export default function Home() {
           <button className="primary big" onClick={requestFriendLocation} disabled={!phone.trim()}>
             Pedir ubicacion por WhatsApp
           </button>
+
+          <label className="toggle">
+            <input
+              checked={surpriseMode}
+              onChange={(event) => setSurpriseMode(event.target.checked)}
+              type="checkbox"
+            />
+            Mensaje sorpresa: no cuenta el plan, solo pide el punto.
+          </label>
         </section>
 
         <section className="panel destination">
@@ -321,8 +333,8 @@ export default function Home() {
         </section>
 
         <section className="note">
-          No localiza a nadie solo por telefono: tu colega tiene que compartir
-          su ubicacion. Asi evitamos lios y funciona sin servidor.
+          Sorpresa si, rastreo oculto no: tu colega tiene que compartir su
+          ubicacion tocando el boton. La sorpresa es el motivo, no el permiso.
         </section>
       </main>
 
@@ -435,6 +447,21 @@ const styles = `
     font: inherit;
     font-size: 1.1rem;
     outline: none;
+  }
+
+  .toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 14px 0 0;
+    color: rgba(255, 255, 255, 0.82);
+    font-weight: 700;
+  }
+
+  .toggle input {
+    width: 20px;
+    min-height: 20px;
+    accent-color: #ffe08a;
   }
 
   button {
