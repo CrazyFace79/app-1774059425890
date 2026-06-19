@@ -111,6 +111,7 @@ export default function Home() {
   const [target, setTarget] = useState<Place>(() => parseTargetFromUrl() || defaultTarget);
   const [shareMode] = useState(isShareMode);
   const [senderPhone] = useState(senderPhoneFromUrl);
+  const [copiedCoords, setCopiedCoords] = useState(false);
   const [location, setLocation] = useState<LocationState>({
     status: "idle",
     coords: null,
@@ -193,6 +194,22 @@ export default function Home() {
     window.open(mapsUrl(target), "_blank", "noopener,noreferrer");
   }
 
+  async function copyCoordinates() {
+    const text = `${target.lat.toFixed(6)}, ${target.lng.toFixed(6)}`;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCoords(true);
+      window.setTimeout(() => setCopiedCoords(false), 2000);
+    } catch {
+      setLocation({
+        status: "error",
+        coords: null,
+        message: `Copia estas coordenadas a mano: ${text}`,
+      });
+    }
+  }
+
   if (shareMode) {
     return (
       <>
@@ -234,11 +251,12 @@ export default function Home() {
 
       <main className="app">
         <section className="panel">
-          <p className="eyebrow">Lo justo</p>
-          <h1>Telefono, ubicacion y viaje</h1>
+          <p className="eyebrow">Sin perderme</p>
+          <h1>Telefono, punto y GPS</h1>
           <p className="intro">
             Mete su telefono, le mandas el enlace y cuando te devuelva su punto
-            le das a <strong>Iniciar viaje</strong>.
+            le das a <strong>Iniciar viaje</strong>. Se abre Maps con GPS hasta
+            la ubicacion exacta.
           </p>
 
           <label>
@@ -277,15 +295,29 @@ export default function Home() {
           </div>
 
           <button className="start" onClick={startTrip}>
-            Iniciar viaje
+            Iniciar viaje con GPS
           </button>
 
           <button className="ghost" onClick={() => requestLocation()}>
             Calcular distancia desde mi sitio
           </button>
 
+          <button className="ghost" onClick={copyCoordinates}>
+            {copiedCoords ? "Coordenadas copiadas" : "Copiar coordenadas de respaldo"}
+          </button>
+
           {distance && <p className="distance">Estas a {distance} aprox.</p>}
           <p className={`status ${location.status}`}>{location.message}</p>
+        </section>
+
+        <section className="panel no-lost">
+          <p className="eyebrow">Modo facil</p>
+          <h2>Para no perderte</h2>
+          <ol className="steps">
+            <li>Pide su ubicacion por WhatsApp.</li>
+            <li>Abre el enlace que te mande.</li>
+            <li>Pulsa Iniciar viaje con GPS y sigue Maps.</li>
+          </ol>
         </section>
 
         <section className="note">
@@ -374,7 +406,8 @@ const styles = `
   .coords,
   .distance,
   .status,
-  .note {
+  .note,
+  .steps {
     line-height: 1.55;
   }
 
@@ -460,8 +493,17 @@ const styles = `
   .coords,
   .distance,
   .status,
-  .note {
+  .note,
+  .steps {
     color: #5d6975;
+  }
+
+  .steps {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding-left: 22px;
+    font-weight: 700;
   }
 
   .status {
