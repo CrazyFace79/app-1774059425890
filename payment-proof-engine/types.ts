@@ -20,6 +20,13 @@ export type SourceKind =
 
 export type FindingKind = "payment" | "reservation" | "suspicion";
 
+export type PaymentConfidence = "LOW" | "MEDIUM" | "HIGH";
+
+export type StripeClassification =
+  | "STRIPE_ACTIVITY"
+  | "VERIFIED_PAYMENT"
+  | "SUBSCRIPTION_DETECTED";
+
 export interface PaymentProofDocument {
   fileName: string;
   text: string;
@@ -54,6 +61,8 @@ export interface PaymentProofFinding {
   tipoEvidencia: string;
   matchedEvidence: EvidenceMatch[];
   confidenceScore: number;
+  paymentConfidence: PaymentConfidence | null;
+  stripeClassification: StripeClassification | null;
   fecha: string | null;
   hora: string | null;
   importe: number | null;
@@ -61,9 +70,50 @@ export interface PaymentProofFinding {
   hotel: string | null;
   ciudad: string | null;
   correoAsociado: string | null;
+  merchantName: string | null;
   numeroReserva: string | null;
   fechaEstancia: string | null;
   evidenceText: string;
+}
+
+export interface StripeActivityRow {
+  fecha: string | null;
+  hora: string | null;
+  dominio: string | null;
+  actividad: string;
+  archivo_origen: string;
+  PAYMENT_CONFIDENCE: PaymentConfidence;
+  evidencia: string;
+}
+
+export interface VerifiedPaymentRow {
+  fecha: string | null;
+  hora: string | null;
+  proveedor: PaymentProvider;
+  merchant_name: string | null;
+  importe: number | null;
+  moneda: string | null;
+  payment_intent: string | null;
+  charge: string | null;
+  receipt: string | null;
+  invoice: string | null;
+  order_confirmation: string | null;
+  archivo_origen: string;
+  PAYMENT_CONFIDENCE: PaymentConfidence;
+  confidence_score: number;
+}
+
+export interface SuscripcionDetectadaRow {
+  fecha: string | null;
+  proveedor: PaymentProvider;
+  merchant_name: string | null;
+  subscription_id: string | null;
+  plan: string | null;
+  importe: number | null;
+  moneda: string | null;
+  archivo_origen: string;
+  evidencia: string;
+  PAYMENT_CONFIDENCE: PaymentConfidence;
 }
 
 export interface PagosConfirmadosRow {
@@ -116,5 +166,8 @@ export interface PaymentProofReport {
   PAGOS_CONFIRMADOS: PagosConfirmadosRow[];
   RESERVAS_CONFIRMADAS: ReservasConfirmadasRow[];
   SOSPECHAS_SIN_CONFIRMAR: SospechaSinConfirmarRow[];
+  STRIPE_ACTIVITY: StripeActivityRow[];
+  VERIFIED_PAYMENT: VerifiedPaymentRow[];
+  SUSCRIPCIONES_DETECTADAS: SuscripcionDetectadaRow[];
   summary: PaymentProofSummary;
 }

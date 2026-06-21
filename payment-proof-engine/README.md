@@ -94,6 +94,45 @@ Campos:
 Incluye visitas o checkouts de Booking, Airbnb, Stripe o PayPal que no tienen
 prueba documental o financiera suficiente.
 
+### STRIPE_ACTIVITY
+
+Incluye actividad Stripe que no debe contarse como pago:
+
+- `api.stripe.com`
+- `checkout.stripe.com`
+- `merchant-ui-api.stripe.com`
+
+`PAYMENT_CONFIDENCE`:
+
+- `LOW`: solo dominio Stripe o API.
+- `MEDIUM`: Stripe con flujo de checkout.
+- `HIGH`: solo cuando tambien hay recibo, factura, charge, payment intent u
+  order confirmation validos.
+
+### VERIFIED_PAYMENT
+
+Pagos Stripe verificados. No basta con ver un dominio Stripe. Requiere evidencia
+financiera no negada:
+
+- `payment_intent` / `pi_...`
+- `charge` / `ch_...` / `charge succeeded`
+- `receipt` / `receipt_url` / numero de recibo
+- `invoice` / `in_...` / `invoice paid`
+- `order confirmation`
+- `merchant name` como refuerzo de contexto, no como prueba unica
+
+### SUSCRIPCIONES_DETECTADAS
+
+Detecta suscripciones Stripe por senales como:
+
+- `subscription`
+- `sub_...`
+- `recurring`
+- `renewal`
+- `plan`
+- `mensual`
+- `suscripcion`
+
 ## Resumen final
 
 El resumen contiene:

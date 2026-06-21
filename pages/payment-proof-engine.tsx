@@ -3,18 +3,23 @@ import { useMemo, useState } from "react";
 import { analyzePaymentProofDocuments } from "../payment-proof-engine";
 import type { PaymentProofReport } from "../payment-proof-engine";
 
-const sampleEvidence = `Booking Confirmation
-Booking Number: BK-123456
-Hotel: Hotel Centro
-City: Madrid
-Check-in: 2026-07-12
+const sampleEvidence = `api.stripe.com request observed
+checkout.stripe.com checkout flow opened
+merchant-ui-api.stripe.com dashboard activity
+
+Merchant name: Inferno Demo Shop
+payment_intent: pi_live_123456789
+charge succeeded: ch_live_987654321
+receipt_url: https://pay.stripe.com/receipts/demo
+invoice paid: in_live_555555
+Order confirmation: ORD-777
 Date: 2026-06-21
 Time: 14:36
 Total: EUR 249.90
-guest@example.com
+customer@example.com
 
-Visited airbnb.com from browser history
-stripe checkout session opened without receipt`;
+subscription: sub_live_222222
+plan: Premium mensual`;
 
 const sectionStyle: CSSProperties = {
   background: "#ffffff",
@@ -35,7 +40,7 @@ const buttonStyle: CSSProperties = {
 };
 
 export default function PaymentProofEnginePage() {
-  const [fileName, setFileName] = useState("booking-confirmation.eml");
+  const [fileName, setFileName] = useState("stripe-receipt.eml");
   const [text, setText] = useState(sampleEvidence);
   const [showSuspicions, setShowSuspicions] = useState(false);
   const [report, setReport] = useState<PaymentProofReport>(() =>
@@ -84,7 +89,8 @@ export default function PaymentProofEnginePage() {
           </h1>
           <p style={{ color: "#475569", fontSize: 18, lineHeight: 1.6 }}>
             Clasifica hallazgos en LEVEL 0-4. Por defecto muestra solo pagos o
-            reservas confirmadas con evidencia LEVEL 3 y LEVEL 4.
+            reservas confirmadas con evidencia LEVEL 3 y LEVEL 4. Los dominios
+            Stripe se separan como actividad y no se cuentan como pago.
           </p>
         </header>
 
@@ -176,6 +182,18 @@ export default function PaymentProofEnginePage() {
           </div>
         </section>
 
+        <ResultSection
+          rows={report.STRIPE_ACTIVITY}
+          title="STRIPE_ACTIVITY"
+        />
+        <ResultSection
+          rows={report.VERIFIED_PAYMENT}
+          title="VERIFIED_PAYMENT"
+        />
+        <ResultSection
+          rows={report.SUSCRIPCIONES_DETECTADAS}
+          title="SUSCRIPCIONES_DETECTADAS"
+        />
         <ResultSection
           rows={report.PAGOS_CONFIRMADOS}
           title="PAGOS_CONFIRMADOS"

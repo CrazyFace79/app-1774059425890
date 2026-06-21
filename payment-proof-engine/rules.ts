@@ -107,7 +107,7 @@ export const CONFIRMED_EVIDENCE_RULES: Rule[] = [
   {
     label: "Stripe receipt",
     provider: "stripe",
-    pattern: /\breceipt\b/i,
+    pattern: /\b(receipt|receipt_url|receipt\s+number)\b/i,
     level: 3,
     type: "payment-confirmed",
   },
@@ -122,6 +122,27 @@ export const CONFIRMED_EVIDENCE_RULES: Rule[] = [
     label: "Stripe charge succeeded",
     provider: "stripe",
     pattern: /\bcharge\s+succeeded\b/i,
+    level: 3,
+    type: "payment-confirmed",
+  },
+  {
+    label: "Stripe charge",
+    provider: "stripe",
+    pattern: /\b(charge|ch_[a-z0-9_]+)\b/i,
+    level: 3,
+    type: "payment-confirmed",
+  },
+  {
+    label: "Stripe invoice",
+    provider: "stripe",
+    pattern: /\b(invoice|in_[a-z0-9_]+)\b/i,
+    level: 3,
+    type: "payment-confirmed",
+  },
+  {
+    label: "Stripe order confirmation",
+    provider: "stripe",
+    pattern: /\border\s+confirmation\b/i,
     level: 3,
     type: "payment-confirmed",
   },
@@ -215,7 +236,8 @@ export const CHECKOUT_RULES: Rule[] = [
   {
     label: "stripe checkout",
     provider: "stripe",
-    pattern: /\b(stripe\s+checkout|checkout\.stripe\.com|checkout\s+session)\b/i,
+    pattern:
+      /\b(stripe\s+checkout|checkout\.stripe\.com|checkout\s+session|merchant-ui-api\.stripe\.com)\b/i,
     level: 1,
     type: "checkout",
   },
@@ -234,6 +256,46 @@ export const CHECKOUT_RULES: Rule[] = [
     type: "checkout",
   },
 ];
+
+export const STRIPE_ACTIVITY_PATTERN =
+  /\b(api\.stripe\.com|checkout\.stripe\.com|merchant-ui-api\.stripe\.com)\b/i;
+
+export const STRIPE_CHECKOUT_FLOW_PATTERN =
+  /\b(checkout\.stripe\.com|stripe\s+checkout|checkout\s+session|cs_(?:test|live)_[a-z0-9_]+|merchant-ui-api\.stripe\.com)\b/i;
+
+export const STRIPE_VERIFIED_PAYMENT_PATTERNS = [
+  {
+    field: "payment_intent",
+    label: "payment_intent",
+    pattern: /\b(payment_intent|pi_(?:test|live)?_?[a-z0-9_]+|pi_[a-z0-9_]+)\b/i,
+  },
+  {
+    field: "charge",
+    label: "charge",
+    pattern: /\b(charge|charge\s+succeeded|ch_(?:test|live)?_?[a-z0-9_]+|ch_[a-z0-9_]+)\b/i,
+  },
+  {
+    field: "receipt",
+    label: "receipt",
+    pattern: /\b(receipt|receipt\s+number|receipt_url|recibo)\b/i,
+  },
+  {
+    field: "invoice",
+    label: "invoice",
+    pattern: /\b(invoice|invoice\s+paid|in_(?:test|live)?_?[a-z0-9_]+|factura)\b/i,
+  },
+  {
+    field: "order_confirmation",
+    label: "order confirmation",
+    pattern: /\b(order\s+confirmation|order\s+confirmed|confirmaci[oó]n\s+de\s+pedido)\b/i,
+  },
+] as const;
+
+export const STRIPE_MERCHANT_PATTERN =
+  /\b(?:merchant\s+name|merchant|comercio|nombre\s+comercio|seller|vendor)\s*[:#=]\s*([^\n\r,.;]{2,80})/i;
+
+export const SUBSCRIPTION_PATTERN =
+  /\b(subscription|subscription_id|sub_[a-z0-9_]+|recurring|renewal|plan|mensual|suscripci[oó]n|renovaci[oó]n)\b/i;
 
 export const NOISE_PATTERNS = [
   /\bdns\b/i,

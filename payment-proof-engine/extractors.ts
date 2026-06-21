@@ -1,6 +1,9 @@
 import type { PaymentProvider, SourceKind } from "./types";
 import {
   BROWSER_ARTIFACT_EXTENSIONS,
+  STRIPE_ACTIVITY_PATTERN,
+  STRIPE_MERCHANT_PATTERN,
+  SUBSCRIPTION_PATTERN,
   SUPPORTED_EXTENSIONS,
 } from "./rules";
 
@@ -15,6 +18,10 @@ const RESERVATION_PATTERN =
 const AIRBNB_CODE_PATTERN =
   /\bairbnb\s+confirmation\s+code\s*[:#-]?\s*([A-Z0-9-]{4,})\b/i;
 const STRIPE_ID_PATTERN = /\b((?:pi|ch|in)_[A-Za-z0-9_]+)\b/;
+const STRIPE_PAYMENT_INTENT_PATTERN = /\b(pi_[A-Za-z0-9_]+)\b/;
+const STRIPE_CHARGE_PATTERN = /\b(ch_[A-Za-z0-9_]+)\b/;
+const STRIPE_INVOICE_PATTERN = /\b(in_[A-Za-z0-9_]+)\b/;
+const STRIPE_SUBSCRIPTION_PATTERN = /\b(sub_[A-Za-z0-9_]+)\b/;
 const PAYPAL_TRANSACTION_PATTERN =
   /\btransaction\s+id\s*[:#-]?\s*([A-Z0-9-]{6,})\b/i;
 
@@ -194,6 +201,44 @@ export function extractCity(text: string): string | null {
   ];
 
   return extractFirstCleanGroup(text, patterns);
+}
+
+export function extractMerchantName(text: string): string | null {
+  return text.match(STRIPE_MERCHANT_PATTERN)?.[1]?.trim() ?? null;
+}
+
+export function extractStripeDomain(text: string): string | null {
+  return text.match(STRIPE_ACTIVITY_PATTERN)?.[1]?.toLowerCase() ?? null;
+}
+
+export function extractStripePaymentIntent(text: string): string | null {
+  return text.match(STRIPE_PAYMENT_INTENT_PATTERN)?.[1] ?? null;
+}
+
+export function extractStripeCharge(text: string): string | null {
+  return text.match(STRIPE_CHARGE_PATTERN)?.[1] ?? null;
+}
+
+export function extractStripeInvoice(text: string): string | null {
+  return text.match(STRIPE_INVOICE_PATTERN)?.[1] ?? null;
+}
+
+export function extractStripeSubscriptionId(text: string): string | null {
+  return text.match(STRIPE_SUBSCRIPTION_PATTERN)?.[1] ?? null;
+}
+
+export function extractPlan(text: string): string | null {
+  const patterns = [
+    /\bplan\s*[:#-]?\s*([^\n\r,.;]{2,80})/i,
+    /\bsubscription\s*[:#-]?\s*([^\n\r,.;]{2,80})/i,
+    /\bsuscripci[oó]n\s*[:#-]?\s*([^\n\r,.;]{2,80})/i,
+  ];
+
+  return extractFirstCleanGroup(text, patterns);
+}
+
+export function hasSubscriptionSignal(text: string): boolean {
+  return SUBSCRIPTION_PATTERN.test(text);
 }
 
 export function createSnippet(text: string, index: number, length = 180): string {

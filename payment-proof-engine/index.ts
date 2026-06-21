@@ -13,6 +13,7 @@ export type {
   EvidenceLevel,
   EvidenceMatch,
   PagosConfirmadosRow,
+  PaymentConfidence,
   PaymentProofDocument,
   PaymentProofFinding,
   PaymentProofOptions,
@@ -20,6 +21,10 @@ export type {
   PaymentProofSummary,
   PaymentProvider,
   ReservasConfirmadasRow,
+  StripeActivityRow,
+  StripeClassification,
+  SuscripcionDetectadaRow,
   SospechaSinConfirmarRow,
   SourceKind,
+  VerifiedPaymentRow,
 } from "./types";

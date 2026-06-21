@@ -4,6 +4,9 @@ import {
   CONFIRMED_EVIDENCE_RULES,
   DOCUMENTARY_SOURCE_KINDS,
   NOISE_PATTERNS,
+  STRIPE_ACTIVITY_PATTERN,
+  STRIPE_CHECKOUT_FLOW_PATTERN,
+  STRIPE_VERIFIED_PAYMENT_PATTERNS,
   type Rule,
 } from "./rules";
 import {
@@ -14,9 +17,17 @@ import {
   extractDate,
   extractEmail,
   extractHotel,
+  extractMerchantName,
+  extractPlan,
   extractReservationNumber,
   extractStayDate,
+  extractStripeCharge,
+  extractStripeDomain,
+  extractStripeInvoice,
+  extractStripePaymentIntent,
+  extractStripeSubscriptionId,
   extractTime,
+  hasSubscriptionSignal,
   inferSourceKind,
   normalizeText,
   providerFromBankText,
@@ -26,6 +37,7 @@ import type {
   EvidenceMatch,
   FindingKind,
   PagosConfirmadosRow,
+  PaymentConfidence,
   PaymentProofDocument,
   PaymentProofFinding,
   PaymentProofOptions,
@@ -33,8 +45,11 @@ import type {
   PaymentProofSummary,
   PaymentProvider,
   ReservasConfirmadasRow,
+  StripeActivityRow,
+  SuscripcionDetectadaRow,
   SospechaSinConfirmarRow,
   SourceKind,
+  VerifiedPaymentRow,
 } from "./types";
 
 const NO_EVIDENCE_MESSAGE =
@@ -58,6 +73,11 @@ export function analyzePaymentProofDocuments(
   const SOSPECHAS_SIN_CONFIRMAR = findings
     .filter((finding) => finding.level < 3)
     .map(toSospechaSinConfirmarRow);
+  const STRIPE_ACTIVITY = documents.flatMap(toStripeActivityRows);
+  const VERIFIED_PAYMENT = findings
+    .filter(isStripeVerifiedPaymentFinding)
+    .map(toVerifiedPaymentRow);
+  const SUSCRIPCIONES_DETECTADAS = documents.flatMap(toSubscriptionRows);
   const summary = buildSummary(PAGOS_CONFIRMADOS, RESERVAS_CONFIRMADAS, findings);
 
   return {
@@ -66,6 +86,9 @@ export function analyzePaymentProofDocuments(
     PAGOS_CONFIRMADOS,
     RESERVAS_CONFIRMADAS,
     SOSPECHAS_SIN_CONFIRMAR,
+    STRIPE_ACTIVITY,
+    VERIFIED_PAYMENT,
+    SUSCRIPCIONES_DETECTADAS,
     summary,
   };
 }
@@ -236,6 +259,9 @@ function buildConfirmedFinding(
       hasEmail: Boolean(extractEmail(document.text)),
       hasReservationEvidence,
     }),
+    paymentConfidence: provider === "stripe" ? "HIGH" : null,
+    stripeClassification:
+      provider === "stripe" ? "VERIFIED_PAYMENT" : null,
     fecha: extractDate(document.text),
     hora: extractTime(document.text),
     importe: amount,
@@ -243,6 +269,7 @@ function buildConfirmedFinding(
     hotel: extractHotel(document.text),
     ciudad: extractCity(document.text),
     correoAsociado: extractEmail(document.text),
+    merchantName: extractMerchantName(document.text),
     numeroReserva,
     fechaEstancia: extractStayDate(document.text),
     evidenceText: matches[0]?.evidence.snippet ?? "",
@@ -265,6 +292,8 @@ function buildSuspicionFinding(
   }, undefined);
   const provider = strongest?.rule.provider ?? detectProvider(document.text);
   const level = strongest?.rule.level ?? 0;
+  const paymentConfidence =
+    provider === "stripe" ? getStripeActivityConfidence(document.text) : null;
 
   return {
     level,
@@ -276,6 +305,9 @@ function buildSuspicionFinding(
     tipoEvidencia: strongest?.rule.label ?? "ruido no documental",
     matchedEvidence: matches.map((match) => match.evidence),
     confidenceScore: calculateSuspicionConfidence(level),
+    paymentConfidence,
+    stripeClassification:
+      provider === "stripe" ? "STRIPE_ACTIVITY" : null,
     fecha: extractDate(document.text),
     hora: extractTime(document.text),
     importe: extractAmount(document.text).amount,
@@ -283,6 +315,7 @@ function buildSuspicionFinding(
     hotel: extractHotel(document.text),
     ciudad: extractCity(document.text),
     correoAsociado: extractEmail(document.text),
+    merchantName: extractMerchantName(document.text),
     numeroReserva: extractReservationNumber(document.text),
     fechaEstancia: extractStayDate(document.text),
     evidenceText:
@@ -299,6 +332,10 @@ function isRuleApplicable(
 ): boolean {
   const normalized = normalizeText(text);
   const isBankMovementRule = rule.label.startsWith("Bank movement");
+
+  if (rule.provider === "stripe" && rule.type === "payment-confirmed") {
+    return isStripeVerifiedRuleApplicable(rule, text, detectedProvider, amount);
+  }
 
   if (isBankMovementRule) {
     return amount !== null && BANK_CONTEXT_PATTERN.test(text);
@@ -323,6 +360,67 @@ function isRuleApplicable(
 
   if (detectedProvider === "unknown") {
     return normalized.includes(rule.provider);
+  }
+
+  return true;
+}
+
+function isStripeVerifiedRuleApplicable(
+  rule: Rule,
+  text: string,
+  detectedProvider: PaymentProvider,
+  amount: number | null
+): boolean {
+  if (detectedProvider !== "stripe") {
+    return false;
+  }
+
+  if (rule.label === "Bank movement STRIPE") {
+    return amount !== null && BANK_CONTEXT_PATTERN.test(text);
+  }
+
+  const hasVerifiedArtifact = hasStripeVerifiedPaymentArtifact(text);
+
+  if (!hasVerifiedArtifact) {
+    return false;
+  }
+
+  if (
+    ["Stripe receipt", "Stripe invoice paid", "Stripe invoice"].includes(
+      rule.label
+    ) &&
+    amount === null &&
+    !extractMerchantName(text) &&
+    !extractStripePaymentIntent(text) &&
+    !extractStripeCharge(text)
+  ) {
+    return false;
+  }
+
+  if (
+    rule.label === "Stripe succeeded=true" &&
+    !extractStripePaymentIntent(text) &&
+    !extractStripeCharge(text) &&
+    amount === null
+  ) {
+    return false;
+  }
+
+  if (
+    rule.label === "Stripe charge" &&
+    !extractStripeCharge(text) &&
+    !/\bcharge\s+succeeded\b/i.test(text) &&
+    amount === null
+  ) {
+    return false;
+  }
+
+  if (
+    rule.label === "Stripe order confirmation" &&
+    amount === null &&
+    !extractMerchantName(text)
+  ) {
+    return false;
   }
 
   return true;
@@ -495,6 +593,177 @@ function toSospechaSinConfirmarRow(
       "No contiene prueba documental o financiera de pago/reserva confirmada.",
     evidencia: finding.evidenceText,
   };
+}
+
+function toStripeActivityRows(
+  document: PaymentProofDocument
+): StripeActivityRow[] {
+  const text = document.text.trim();
+
+  if (!text || !isStripeActivity(text)) {
+    return [];
+  }
+
+  const domain = extractStripeDomain(text);
+  const matchIndex = text.search(STRIPE_ACTIVITY_PATTERN);
+  const checkoutIndex = text.search(STRIPE_CHECKOUT_FLOW_PATTERN);
+  const snippetIndex = matchIndex === -1 ? Math.max(checkoutIndex, 0) : matchIndex;
+
+  return [
+    {
+      fecha: extractDate(text),
+      hora: extractTime(text),
+      dominio: domain,
+      actividad: STRIPE_CHECKOUT_FLOW_PATTERN.test(text)
+        ? "Stripe checkout flow"
+        : "Stripe domain/API activity",
+      archivo_origen: document.filePath ?? document.fileName,
+      PAYMENT_CONFIDENCE: getStripeActivityConfidence(text),
+      evidencia: createSnippet(text, snippetIndex),
+    },
+  ];
+}
+
+function toSubscriptionRows(
+  document: PaymentProofDocument
+): SuscripcionDetectadaRow[] {
+  const text = document.text.trim();
+
+  if (!text || !hasSubscriptionSignal(text) || detectProvider(text) !== "stripe") {
+    return [];
+  }
+
+  const { amount, currency } = extractAmount(text);
+  const subscriptionIndex = text.search(/\b(subscription|sub_|recurring|renewal|plan|mensual|suscripci[oó]n|renovaci[oó]n)\b/i);
+
+  return [
+    {
+      fecha: extractDate(text),
+      proveedor: "stripe",
+      merchant_name: extractMerchantName(text),
+      subscription_id: extractStripeSubscriptionId(text),
+      plan: extractPlan(text),
+      importe: amount,
+      moneda: currency,
+      archivo_origen: document.filePath ?? document.fileName,
+      evidencia: createSnippet(text, Math.max(subscriptionIndex, 0)),
+      PAYMENT_CONFIDENCE: hasStripeVerifiedPaymentArtifact(text)
+        ? "HIGH"
+        : getStripeActivityConfidence(text),
+    },
+  ];
+}
+
+function isStripeVerifiedPaymentFinding(
+  finding: PaymentProofFinding
+): boolean {
+  return (
+    finding.provider === "stripe" &&
+    finding.level >= 3 &&
+    finding.kind === "payment" &&
+    finding.stripeClassification === "VERIFIED_PAYMENT"
+  );
+}
+
+function toVerifiedPaymentRow(
+  finding: PaymentProofFinding
+): VerifiedPaymentRow {
+  const evidenceLabels = finding.matchedEvidence
+    .map((evidence) => evidence.label.toLowerCase())
+    .join(" ");
+
+  return {
+    fecha: finding.fecha,
+    hora: finding.hora,
+    proveedor: finding.provider,
+    merchant_name: finding.merchantName,
+    importe: finding.importe,
+    moneda: finding.moneda,
+    payment_intent: extractStripePaymentIntent(finding.evidenceText),
+    charge: extractStripeCharge(finding.evidenceText),
+    receipt:
+      evidenceLabels.includes("receipt") ||
+      /\breceipt(_url|\s+number)?\b/i.test(finding.evidenceText)
+        ? "detected"
+        : null,
+    invoice: extractStripeInvoice(finding.evidenceText) ??
+      (evidenceLabels.includes("invoice") ? "detected" : null),
+    order_confirmation: evidenceLabels.includes("order confirmation")
+      ? "detected"
+      : null,
+    archivo_origen: finding.filePath ?? finding.fileName,
+    PAYMENT_CONFIDENCE: finding.paymentConfidence ?? "HIGH",
+    confidence_score: finding.confidenceScore,
+  };
+}
+
+function isStripeActivity(text: string): boolean {
+  return (
+    STRIPE_ACTIVITY_PATTERN.test(text) ||
+    STRIPE_CHECKOUT_FLOW_PATTERN.test(text) ||
+    /\bstripe\b/i.test(text)
+  );
+}
+
+function getStripeActivityConfidence(text: string): PaymentConfidence {
+  if (hasStripeVerifiedPaymentArtifact(text)) {
+    return "HIGH";
+  }
+
+  if (STRIPE_CHECKOUT_FLOW_PATTERN.test(text)) {
+    return "MEDIUM";
+  }
+
+  return "LOW";
+}
+
+function hasStripeVerifiedPaymentArtifact(text: string): boolean {
+  const { amount } = extractAmount(text);
+  const hasMerchant = Boolean(extractMerchantName(text));
+  const paymentIntent = Boolean(extractStripePaymentIntent(text));
+  const charge = Boolean(extractStripeCharge(text));
+  const invoice = Boolean(extractStripeInvoice(text));
+
+  return STRIPE_VERIFIED_PAYMENT_PATTERNS.some(({ field, pattern }) => {
+    const matchIndex = text.search(pattern);
+
+    if (matchIndex === -1 || isNegatedEvidence(text, matchIndex)) {
+      return false;
+    }
+
+    if (field === "payment_intent") {
+      return paymentIntent || /\bpayment_intent\b/i.test(text);
+    }
+
+    if (field === "charge") {
+      return charge || /\bcharge\s+succeeded\b/i.test(text) || amount !== null;
+    }
+
+    if (field === "receipt") {
+      return (
+        /\b(receipt_url|receipt\s+number)\b/i.test(text) ||
+        amount !== null ||
+        hasMerchant ||
+        paymentIntent ||
+        charge
+      );
+    }
+
+    if (field === "invoice") {
+      return (
+        invoice ||
+        /\binvoice\s+paid\b/i.test(text) ||
+        amount !== null ||
+        hasMerchant
+      );
+    }
+
+    if (field === "order_confirmation") {
+      return amount !== null || hasMerchant;
+    }
+
+    return false;
+  });
 }
 
 function buildSummary(
