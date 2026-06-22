@@ -48,6 +48,7 @@ export default function MissingEvidenceRecoveryPage() {
   const [exportedFilesText, setExportedFilesText] = useState(sampleExportedFiles);
   const [candidateFilesText, setCandidateFilesText] = useState(sampleCandidateFiles);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedRecoveredFile[]>([]);
+  const [selectedRecoveredKeys, setSelectedRecoveredKeys] = useState<string[]>([]);
   const [report, setReport] = useState<MissingEvidenceRecoveryReport>(() =>
     buildReport(sampleChat, sampleExportedFiles, sampleCandidateFiles, [])
   );
@@ -71,6 +72,16 @@ export default function MissingEvidenceRecoveryPage() {
           : "NO",
       })),
     [recoveredFiles, uploadedFiles]
+  );
+  const selectedUploadedFiles = useMemo(
+    () =>
+      dedupeUploadedFiles(
+        recoveredFiles
+          .filter((row) => selectedRecoveredKeys.includes(getRecoveredKey(row)))
+          .map((row) => findUploadedFile(row.nombre_archivo, uploadedFiles))
+          .filter((file): file is UploadedRecoveredFile => Boolean(file))
+      ),
+    [recoveredFiles, selectedRecoveredKeys, uploadedFiles]
   );
 
   const summary = useMemo(
@@ -97,6 +108,7 @@ export default function MissingEvidenceRecoveryPage() {
     const files = Array.from(event.target.files ?? []);
 
     uploadedFiles.forEach((file) => URL.revokeObjectURL(file.url));
+    setSelectedRecoveredKeys([]);
     const nextUploadedFiles = files.map((file) => ({
       name: file.name,
       size: file.size,
@@ -213,6 +225,20 @@ export default function MissingEvidenceRecoveryPage() {
               >
                 Exportar CSV
               </button>
+              <button
+                disabled={selectedUploadedFiles.length === 0}
+                onClick={() => downloadUploadedFiles(selectedUploadedFiles)}
+                style={{
+                  ...buttonStyle,
+                  background:
+                    selectedUploadedFiles.length === 0 ? "#94a3b8" : "#16a34a",
+                  cursor:
+                    selectedUploadedFiles.length === 0 ? "not-allowed" : "pointer",
+                }}
+                type="button"
+              >
+                Descargar seleccionados
+              </button>
             </div>
           </form>
 
@@ -250,7 +276,22 @@ export default function MissingEvidenceRecoveryPage() {
           title="ARCHIVOS_PERDIDOS"
         />
         <RecoveredFilesSection
+          onSelectAllDownloadable={() =>
+            setSelectedRecoveredKeys(
+              recoveredFiles
+                .filter((row) => findUploadedFile(row.nombre_archivo, uploadedFiles))
+                .map(getRecoveredKey)
+            )
+          }
+          onToggleSelection={(key) =>
+            setSelectedRecoveredKeys((current) =>
+              current.includes(key)
+                ? current.filter((item) => item !== key)
+                : [...current, key]
+            )
+          }
           rows={recoveredFiles}
+          selectedKeys={selectedRecoveredKeys}
           uploadedFiles={uploadedFiles}
           title="ARCHIVOS_RECUPERADOS"
         />
@@ -390,11 +431,17 @@ function ResultSection<T extends object>({
 }
 
 function RecoveredFilesSection({
+  onSelectAllDownloadable,
+  onToggleSelection,
   rows,
+  selectedKeys,
   title,
   uploadedFiles,
 }: {
+  onSelectAllDownloadable: () => void;
+  onToggleSelection: (key: string) => void;
   rows: RecoveryCandidateRow[];
+  selectedKeys: string[];
   title: string;
   uploadedFiles: UploadedRecoveredFile[];
 }) {
@@ -417,19 +464,33 @@ function RecoveredFilesSection({
         }}
       >
         <h2 style={{ margin: 0 }}>{title}</h2>
-        <button
-          disabled={rows.length === 0}
-          onClick={() => downloadCsv(`${title.toLowerCase()}.csv`, csvRows)}
-          style={{
-            ...buttonStyle,
-            background: rows.length === 0 ? "#94a3b8" : "#334155",
-            cursor: rows.length === 0 ? "not-allowed" : "pointer",
-            padding: "10px 14px",
-          }}
-          type="button"
-        >
-          Exportar CSV
-        </button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <button
+            disabled={!rows.some((row) => findUploadedFile(row.nombre_archivo, uploadedFiles))}
+            onClick={onSelectAllDownloadable}
+            style={{
+              ...buttonStyle,
+              background: "#16a34a",
+              padding: "10px 14px",
+            }}
+            type="button"
+          >
+            Seleccionar descargables
+          </button>
+          <button
+            disabled={rows.length === 0}
+            onClick={() => downloadCsv(`${title.toLowerCase()}.csv`, csvRows)}
+            style={{
+              ...buttonStyle,
+              background: rows.length === 0 ? "#94a3b8" : "#334155",
+              cursor: rows.length === 0 ? "not-allowed" : "pointer",
+              padding: "10px 14px",
+            }}
+            type="button"
+          >
+            Exportar CSV
+          </button>
+        </div>
       </div>
       {rows.length === 0 ? (
         <p style={{ color: "#64748b" }}>Sin resultados.</p>
@@ -437,6 +498,7 @@ function RecoveredFilesSection({
         <table style={{ borderCollapse: "collapse", minWidth: 980, width: "100%" }}>
           <thead>
             <tr>
+              <th style={cellHeaderStyle}>seleccionar</th>
               <th style={cellHeaderStyle}>nombre_archivo</th>
               <th style={cellHeaderStyle}>tipo</th>
               <th style={cellHeaderStyle}>ruta_candidata</th>
@@ -452,9 +514,18 @@ function RecoveredFilesSection({
                 row.nombre_archivo,
                 uploadedFiles
               );
+              const recoveredKey = getRecoveredKey(row);
 
               return (
                 <tr key={`${title}-${index}`}>
+                  <td style={cellStyle}>
+                    <input
+                      checked={selectedKeys.includes(recoveredKey)}
+                      disabled={!uploadedFile}
+                      onChange={() => onToggleSelection(recoveredKey)}
+                      type="checkbox"
+                    />
+                  </td>
                   <td style={cellStyle}>{row.nombre_archivo}</td>
                   <td style={cellStyle}>{row.tipo}</td>
                   <td style={cellStyle}>{row.ruta_candidata}</td>
@@ -463,18 +534,16 @@ function RecoveredFilesSection({
                   <td style={cellStyle}>{row.estado}</td>
                   <td style={cellStyle}>
                     {uploadedFile ? (
-                      <a
-                        download={uploadedFile.name}
-                        href={uploadedFile.url}
+                      <button
+                        onClick={() => downloadUploadedFiles([uploadedFile])}
                         style={{
                           ...buttonStyle,
-                          display: "inline-block",
                           padding: "9px 12px",
-                          textDecoration: "none",
                         }}
+                        type="button"
                       >
                         Descargar archivo
-                      </a>
+                      </button>
                     ) : (
                       <span style={{ color: "#64748b" }}>
                         Sube el archivo para descargarlo
@@ -500,6 +569,44 @@ function findUploadedFile(
   return uploadedFiles.find(
     (file) => normalizeDownloadName(file.name) === normalizedFileName
   );
+}
+
+function getRecoveredKey(row: RecoveryCandidateRow): string {
+  return `${row.nombre_archivo}::${row.ruta_candidata}`;
+}
+
+function dedupeUploadedFiles(
+  files: UploadedRecoveredFile[]
+): UploadedRecoveredFile[] {
+  const seen = new Set<string>();
+  const result: UploadedRecoveredFile[] = [];
+
+  for (const file of files) {
+    const key = normalizeDownloadName(file.name);
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(file);
+  }
+
+  return result;
+}
+
+function downloadUploadedFiles(files: UploadedRecoveredFile[]) {
+  dedupeUploadedFiles(files).forEach((file, index) => {
+    window.setTimeout(() => {
+      const link = document.createElement("a");
+
+      link.href = file.url;
+      link.download = file.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }, index * 250);
+  });
 }
 
 function normalizeDownloadName(fileName: string): string {
