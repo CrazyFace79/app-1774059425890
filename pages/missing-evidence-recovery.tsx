@@ -40,6 +40,17 @@ export default function MissingEvidenceRecoveryPage() {
   const [report, setReport] = useState<MissingEvidenceRecoveryReport>(() =>
     buildReport(sampleChat, sampleExportedFiles, sampleCandidateFiles)
   );
+  const lostFiles = useMemo(
+    () =>
+      report.MISSING_ATTACHMENTS.filter(
+        (row) => row.estado === "MISSING_FROM_EXPORT"
+      ),
+    [report]
+  );
+  const recoveredFiles = useMemo(
+    () => report.RECOVERY_CANDIDATES,
+    [report]
+  );
 
   const summary = useMemo(
     () => [
@@ -119,9 +130,23 @@ export default function MissingEvidenceRecoveryPage() {
               rows={6}
               value={candidateFilesText}
             />
-            <button style={buttonStyle} type="submit">
-              Localizar adjuntos faltantes
-            </button>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+              <button style={buttonStyle} type="submit">
+                Scan Missing Evidence
+              </button>
+              <button
+                onClick={() =>
+                  downloadCsv("missing-evidence-report.csv", [
+                    ...report.MISSING_ATTACHMENTS,
+                    ...report.RECOVERY_CANDIDATES,
+                  ])
+                }
+                style={{ ...buttonStyle, background: "#dc2626" }}
+                type="button"
+              >
+                Exportar CSV
+              </button>
+            </div>
           </form>
 
           <div
@@ -153,6 +178,14 @@ export default function MissingEvidenceRecoveryPage() {
           </div>
         </section>
 
+        <ResultSection
+          rows={lostFiles}
+          title="ARCHIVOS_PERDIDOS"
+        />
+        <ResultSection
+          rows={recoveredFiles}
+          title="ARCHIVOS_RECUPERADOS"
+        />
         <ResultSection
           rows={report.MISSING_ATTACHMENTS}
           title="MISSING_ATTACHMENTS"
@@ -226,7 +259,30 @@ function ResultSection<T extends object>({
 }) {
   return (
     <section style={{ ...sectionStyle, marginBottom: 24, overflowX: "auto" }}>
-      <h2 style={{ marginTop: 0 }}>{title}</h2>
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          gap: 12,
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+      >
+        <h2 style={{ margin: 0 }}>{title}</h2>
+        <button
+          disabled={rows.length === 0}
+          onClick={() => downloadCsv(`${title.toLowerCase()}.csv`, rows)}
+          style={{
+            ...buttonStyle,
+            background: rows.length === 0 ? "#94a3b8" : "#334155",
+            cursor: rows.length === 0 ? "not-allowed" : "pointer",
+            padding: "10px 14px",
+          }}
+          type="button"
+        >
+          Exportar CSV
+        </button>
+      </div>
       {rows.length === 0 ? (
         <p style={{ color: "#64748b" }}>Sin resultados.</p>
       ) : (
@@ -255,6 +311,52 @@ function ResultSection<T extends object>({
       )}
     </section>
   );
+}
+
+function downloadCsv(fileName: string, rows: object[]) {
+  if (rows.length === 0) {
+    return;
+  }
+
+  const csv = toCsv(rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function toCsv(rows: object[]): string {
+  const headers = Array.from(
+    rows.reduce<Set<string>>((set, row) => {
+      Object.keys(row).forEach((key) => set.add(key));
+      return set;
+    }, new Set())
+  );
+  const lines = rows.map((row) =>
+    headers
+      .map((header) =>
+        escapeCsvValue((row as Record<string, unknown>)[header] ?? "")
+      )
+      .join(",")
+  );
+
+  return [headers.join(","), ...lines].join("\n");
+}
+
+function escapeCsvValue(value: unknown): string {
+  const text = String(value);
+
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  return text;
 }
 
 const inputStyle: CSSProperties = {
