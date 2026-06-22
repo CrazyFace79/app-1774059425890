@@ -1,7 +1,10 @@
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties, ChangeEvent, FormEvent } from "react";
 import { useMemo, useState } from "react";
 import { recoverMissingEvidence } from "../missing-evidence-recovery";
-import type { MissingEvidenceRecoveryReport } from "../missing-evidence-recovery";
+import type {
+  MissingEvidenceRecoveryReport,
+  RecoveryCandidateRow,
+} from "../missing-evidence-recovery";
 
 const sampleChat = `2026-06-21 12:42
 Cliente: Te paso adjunto MENU'S HOTEL VILLA CEUTI.pdf
@@ -33,12 +36,20 @@ const buttonStyle: CSSProperties = {
   padding: "13px 18px",
 };
 
+type UploadedRecoveredFile = {
+  name: string;
+  size: number;
+  type: string;
+  url: string;
+};
+
 export default function MissingEvidenceRecoveryPage() {
   const [chatText, setChatText] = useState(sampleChat);
   const [exportedFilesText, setExportedFilesText] = useState(sampleExportedFiles);
   const [candidateFilesText, setCandidateFilesText] = useState(sampleCandidateFiles);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedRecoveredFile[]>([]);
   const [report, setReport] = useState<MissingEvidenceRecoveryReport>(() =>
-    buildReport(sampleChat, sampleExportedFiles, sampleCandidateFiles)
+    buildReport(sampleChat, sampleExportedFiles, sampleCandidateFiles, [])
   );
   const lostFiles = useMemo(
     () =>
@@ -51,6 +62,16 @@ export default function MissingEvidenceRecoveryPage() {
     () => report.RECOVERY_CANDIDATES,
     [report]
   );
+  const recoveredCsvRows = useMemo(
+    () =>
+      recoveredFiles.map((row) => ({
+        ...row,
+        descargable: Boolean(findUploadedFile(row.nombre_archivo, uploadedFiles))
+          ? "SI"
+          : "NO",
+      })),
+    [recoveredFiles, uploadedFiles]
+  );
 
   const summary = useMemo(
     () => [
@@ -58,13 +79,40 @@ export default function MissingEvidenceRecoveryPage() {
       ["ADJUNTOS FALTANTES", report.stats.missingAttachments],
       ["COPIAS CANDIDATAS", report.stats.possibleCopiesFound],
       ["FALTANTES PRIORIDAD ALTA", report.stats.highPriorityMissing],
+      ["ARCHIVOS SUBIDOS PARA DESCARGA", uploadedFiles.length],
     ],
-    [report]
+    [report, uploadedFiles.length]
   );
 
   const analyze = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setReport(buildReport(chatText, exportedFilesText, candidateFilesText));
+    setReport(
+      buildReport(chatText, exportedFilesText, candidateFilesText, uploadedFiles)
+    );
+  };
+
+  const handleRecoveredFileUpload = (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const files = Array.from(event.target.files ?? []);
+
+    uploadedFiles.forEach((file) => URL.revokeObjectURL(file.url));
+    const nextUploadedFiles = files.map((file) => ({
+      name: file.name,
+      size: file.size,
+      type: file.type || "application/octet-stream",
+      url: URL.createObjectURL(file),
+    }));
+
+    setUploadedFiles(nextUploadedFiles);
+    setReport(
+      buildReport(
+        chatText,
+        exportedFilesText,
+        candidateFilesText,
+        nextUploadedFiles
+      )
+    );
   };
 
   return (
@@ -130,6 +178,25 @@ export default function MissingEvidenceRecoveryPage() {
               rows={6}
               value={candidateFilesText}
             />
+            <label style={{ display: "block", fontWeight: 800, marginBottom: 8 }}>
+              Subir archivos recuperados para descargar
+            </label>
+            <input
+              accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx"
+              multiple
+              onChange={handleRecoveredFileUpload}
+              style={{
+                ...inputStyle,
+                fontFamily: "inherit",
+                resize: "none",
+              }}
+              type="file"
+            />
+            <p style={{ color: "#64748b", lineHeight: 1.5, marginTop: -8 }}>
+              Si subes aqui el archivo fisico original, aparecera en
+              ARCHIVOS_RECUPERADOS con boton de descarga. Una ruta tipo C:\ no se
+              puede descargar por si sola desde el navegador.
+            </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
               <button style={buttonStyle} type="submit">
                 Scan Missing Evidence
@@ -138,7 +205,7 @@ export default function MissingEvidenceRecoveryPage() {
                 onClick={() =>
                   downloadCsv("missing-evidence-report.csv", [
                     ...report.MISSING_ATTACHMENTS,
-                    ...report.RECOVERY_CANDIDATES,
+                    ...recoveredCsvRows,
                   ])
                 }
                 style={{ ...buttonStyle, background: "#dc2626" }}
@@ -182,8 +249,9 @@ export default function MissingEvidenceRecoveryPage() {
           rows={lostFiles}
           title="ARCHIVOS_PERDIDOS"
         />
-        <ResultSection
+        <RecoveredFilesSection
           rows={recoveredFiles}
+          uploadedFiles={uploadedFiles}
           title="ARCHIVOS_RECUPERADOS"
         />
         <ResultSection
@@ -202,7 +270,8 @@ export default function MissingEvidenceRecoveryPage() {
 function buildReport(
   chatText: string,
   exportedFilesText: string,
-  candidateFilesText: string
+  candidateFilesText: string,
+  uploadedFiles: UploadedRecoveredFile[]
 ): MissingEvidenceRecoveryReport {
   return recoverMissingEvidence({
     chats: [{ chat: "CHAT_EXPORT", text: chatText }],
@@ -210,10 +279,17 @@ function buildReport(
       name: line.split(/[\\/]/).pop() ?? line,
       path: line,
     })),
-    candidateFiles: parseLines(candidateFilesText).map((line) => ({
-      name: line.split(/[\\/]/).pop() ?? line,
-      path: line,
-    })),
+    candidateFiles: [
+      ...parseLines(candidateFilesText).map((line) => ({
+        name: line.split(/[\\/]/).pop() ?? line,
+        path: line,
+      })),
+      ...uploadedFiles.map((file) => ({
+        name: file.name,
+        path: `uploaded://${file.name}`,
+        sizeBytes: file.size,
+      })),
+    ],
   });
 }
 
@@ -311,6 +387,129 @@ function ResultSection<T extends object>({
       )}
     </section>
   );
+}
+
+function RecoveredFilesSection({
+  rows,
+  title,
+  uploadedFiles,
+}: {
+  rows: RecoveryCandidateRow[];
+  title: string;
+  uploadedFiles: UploadedRecoveredFile[];
+}) {
+  const csvRows = rows.map((row) => ({
+    ...row,
+    descargable: Boolean(findUploadedFile(row.nombre_archivo, uploadedFiles))
+      ? "SI"
+      : "NO",
+  }));
+
+  return (
+    <section style={{ ...sectionStyle, marginBottom: 24, overflowX: "auto" }}>
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          gap: 12,
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+      >
+        <h2 style={{ margin: 0 }}>{title}</h2>
+        <button
+          disabled={rows.length === 0}
+          onClick={() => downloadCsv(`${title.toLowerCase()}.csv`, csvRows)}
+          style={{
+            ...buttonStyle,
+            background: rows.length === 0 ? "#94a3b8" : "#334155",
+            cursor: rows.length === 0 ? "not-allowed" : "pointer",
+            padding: "10px 14px",
+          }}
+          type="button"
+        >
+          Exportar CSV
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ color: "#64748b" }}>Sin resultados.</p>
+      ) : (
+        <table style={{ borderCollapse: "collapse", minWidth: 980, width: "100%" }}>
+          <thead>
+            <tr>
+              <th style={cellHeaderStyle}>nombre_archivo</th>
+              <th style={cellHeaderStyle}>tipo</th>
+              <th style={cellHeaderStyle}>ruta_candidata</th>
+              <th style={cellHeaderStyle}>carpeta_detectada</th>
+              <th style={cellHeaderStyle}>prioridad</th>
+              <th style={cellHeaderStyle}>estado</th>
+              <th style={cellHeaderStyle}>descarga</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => {
+              const uploadedFile = findUploadedFile(
+                row.nombre_archivo,
+                uploadedFiles
+              );
+
+              return (
+                <tr key={`${title}-${index}`}>
+                  <td style={cellStyle}>{row.nombre_archivo}</td>
+                  <td style={cellStyle}>{row.tipo}</td>
+                  <td style={cellStyle}>{row.ruta_candidata}</td>
+                  <td style={cellStyle}>{row.carpeta_detectada}</td>
+                  <td style={cellStyle}>{row.prioridad}</td>
+                  <td style={cellStyle}>{row.estado}</td>
+                  <td style={cellStyle}>
+                    {uploadedFile ? (
+                      <a
+                        download={uploadedFile.name}
+                        href={uploadedFile.url}
+                        style={{
+                          ...buttonStyle,
+                          display: "inline-block",
+                          padding: "9px 12px",
+                          textDecoration: "none",
+                        }}
+                      >
+                        Descargar archivo
+                      </a>
+                    ) : (
+                      <span style={{ color: "#64748b" }}>
+                        Sube el archivo para descargarlo
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function findUploadedFile(
+  fileName: string,
+  uploadedFiles: UploadedRecoveredFile[]
+): UploadedRecoveredFile | undefined {
+  const normalizedFileName = normalizeDownloadName(fileName);
+
+  return uploadedFiles.find(
+    (file) => normalizeDownloadName(file.name) === normalizedFileName
+  );
+}
+
+function normalizeDownloadName(fileName: string): string {
+  return fileName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’'`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 function downloadCsv(fileName: string, rows: object[]) {
