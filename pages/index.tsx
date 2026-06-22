@@ -1,8 +1,18 @@
+import { useEffect } from "react";
+import { useRouter } from "next/router";
+import { getUser } from "../lib/storage";
+
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const user = getUser();
+    router.replace(user ? "/tasks" : "/login");
+  }, [router]);
+
   return (
-    <div style={{padding:40}}>
-      <h1>AI APP</h1>
-      <p>app para gestionar tareas con login</p>
+    <div className="auth-page">
+      <p style={{ color: "var(--text-muted)" }}>Cargando...</p>
     </div>
   );
 }
