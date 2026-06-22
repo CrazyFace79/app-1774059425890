@@ -128,6 +128,7 @@ function findCandidateCopies(
 ): CandidateFile[] {
   const normalizedTarget = normalizeFileName(fileName);
   const targetWithoutExtension = normalizedTarget.replace(/\.[^.]+$/, "");
+  const targetTokens = tokenizeFileName(targetWithoutExtension);
 
   return candidateFiles.filter((candidate) => {
     const normalizedCandidate = normalizeFileName(candidate.name || candidate.path);
@@ -135,7 +136,8 @@ function findCandidateCopies(
 
     return (
       normalizedCandidate === normalizedTarget ||
-      candidateWithoutExtension === targetWithoutExtension
+      candidateWithoutExtension === targetWithoutExtension ||
+      hasPartialTokenMatch(targetTokens, tokenizeFileName(candidateWithoutExtension))
     );
   });
 }
@@ -191,6 +193,25 @@ function normalizeComparable(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+function tokenizeFileName(value: string): string[] {
+  return normalizeComparable(value)
+    .replace(/\.[^.]+$/, "")
+    .split(/[^a-z0-9]+/i)
+    .filter((token) => token.length >= 3);
+}
+
+function hasPartialTokenMatch(leftTokens: string[], rightTokens: string[]): boolean {
+  if (leftTokens.length === 0 || rightTokens.length === 0) {
+    return false;
+  }
+
+  const rightTokenSet = new Set(rightTokens);
+  const matchingTokens = leftTokens.filter((token) => rightTokenSet.has(token));
+  const minimumMatches = Math.min(3, leftTokens.length);
+
+  return matchingTokens.length >= minimumMatches;
 }
 
 function extractPathNearFileName(text: string, fileName: string): string | null {

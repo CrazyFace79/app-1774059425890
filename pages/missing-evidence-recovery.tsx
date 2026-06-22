@@ -1,7 +1,13 @@
 import type { CSSProperties, ChangeEvent, FormEvent } from "react";
 import { useMemo, useState } from "react";
-import { recoverMissingEvidence } from "../missing-evidence-recovery";
+import JSZip from "jszip";
+import {
+  extractMentionedAttachments,
+  recoverMissingEvidence,
+} from "../missing-evidence-recovery";
 import type {
+  ChatExport,
+  ExportedFile,
   MissingEvidenceRecoveryReport,
   RecoveryCandidateRow,
 } from "../missing-evidence-recovery";
@@ -43,12 +49,23 @@ type UploadedRecoveredFile = {
   url: string;
 };
 
+type ZipFileRecord = {
+  name: string;
+  path: string;
+  sizeBytes: number;
+};
+
 export default function MissingEvidenceRecoveryPage() {
   const [chatText, setChatText] = useState(sampleChat);
   const [exportedFilesText, setExportedFilesText] = useState(sampleExportedFiles);
   const [candidateFilesText, setCandidateFilesText] = useState(sampleCandidateFiles);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedRecoveredFile[]>([]);
   const [selectedRecoveredKeys, setSelectedRecoveredKeys] = useState<string[]>([]);
+  const [zipStatus, setZipStatus] = useState("Ningun ZIP cargado.");
+  const [zipFileRecords, setZipFileRecords] = useState<ZipFileRecord[]>([]);
+  const [zipRecoveredRows, setZipRecoveredRows] = useState<RecoveryCandidateRow[]>(
+    []
+  );
   const [report, setReport] = useState<MissingEvidenceRecoveryReport>(() =>
     buildReport(sampleChat, sampleExportedFiles, sampleCandidateFiles, [])
   );
@@ -60,8 +77,8 @@ export default function MissingEvidenceRecoveryPage() {
     [report]
   );
   const recoveredFiles = useMemo(
-    () => report.RECOVERY_CANDIDATES,
-    [report]
+    () => mergeRecoveredRows(zipRecoveredRows, report.RECOVERY_CANDIDATES),
+    [report, zipRecoveredRows]
   );
   const recoveredCsvRows = useMemo(
     () =>
@@ -96,10 +113,12 @@ export default function MissingEvidenceRecoveryPage() {
       ["ADJUNTOS MENCIONADOS", report.stats.mentionedAttachments],
       ["ADJUNTOS FALTANTES", report.stats.missingAttachments],
       ["COPIAS CANDIDATAS", report.stats.possibleCopiesFound],
+      ["ARCHIVOS INDEXADOS EN ZIP", zipFileRecords.length],
+      ["RECUPERADOS EN ZIP", zipRecoveredRows.length],
       ["FALTANTES PRIORIDAD ALTA", report.stats.highPriorityMissing],
       ["ARCHIVOS SUBIDOS PARA DESCARGA", uploadedFiles.length],
     ],
-    [report, uploadedFiles.length]
+    [report, uploadedFiles.length, zipFileRecords.length, zipRecoveredRows.length]
   );
 
   const analyze = (event: FormEvent<HTMLFormElement>) => {
@@ -107,6 +126,90 @@ export default function MissingEvidenceRecoveryPage() {
     setReport(
       buildReport(chatText, exportedFilesText, candidateFilesText, uploadedFiles)
     );
+    setZipRecoveredRows(buildZipRecoveredRows(chatText, exportedFilesText));
+  };
+
+  const handleZipUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setZipStatus(`Leyendo ZIP: ${file.name}...`);
+    setSelectedRecoveredKeys([]);
+
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+      const fileRecords = entries.map((entry) => ({
+        name: entry.name.split(/[\\/]/).pop() ?? entry.name,
+        path: entry.name,
+        sizeBytes: 0,
+      }));
+      const readableEntries = entries.filter((entry) =>
+        /\.(txt|csv|json)$/i.test(entry.name)
+      );
+      const chatExports: ChatExport[] = await Promise.all(
+        readableEntries.map(async (entry) => ({
+          chat: entry.name,
+          sourceFile: entry.name,
+          text: await entry.async("string"),
+        }))
+      );
+      const nextChatText = chatExports
+        .map((chat) => `--- ${chat.chat} ---\n${chat.text}`)
+        .join("\n\n");
+      const nextExportedFilesText = fileRecords
+        .map((record) => record.path)
+        .join("\n");
+      const nextReport = recoverMissingEvidence({
+        chats: chatExports,
+        exportedFiles: fileRecords,
+        candidateFiles: fileRecords.map((record) => ({
+          name: record.name,
+          path: record.path,
+          sizeBytes: record.sizeBytes,
+        })),
+      });
+      const recoveredRows = buildZipRecoveredRowsFromChats(chatExports, fileRecords);
+      const recoveredPathSet = new Set(
+        recoveredRows.map((row) => normalizeZipPath(row.ruta_candidata))
+      );
+      const zipRecoveredFiles = await Promise.all(
+        entries
+          .filter((entry) => recoveredPathSet.has(normalizeZipPath(entry.name)))
+          .map(async (entry) => {
+            const blob = await entry.async("blob");
+            const name = entry.name.split(/[\\/]/).pop() ?? entry.name;
+
+            return {
+              name,
+              size: blob.size,
+              type: blob.type || "application/octet-stream",
+              url: URL.createObjectURL(blob),
+            };
+          })
+      );
+
+      setChatText(nextChatText);
+      setExportedFilesText(nextExportedFilesText);
+      setCandidateFilesText(nextExportedFilesText);
+      setZipFileRecords(fileRecords);
+      setZipRecoveredRows(recoveredRows);
+      uploadedFiles.forEach((uploadedFile) => URL.revokeObjectURL(uploadedFile.url));
+      setUploadedFiles(zipRecoveredFiles);
+      setReport(nextReport);
+      setZipStatus(
+        `ZIP analizado: ${fileRecords.length} archivos indexados, ${readableEntries.length} TXT/CSV/JSON leidos, ${recoveredRows.length} adjuntos recuperados.`
+      );
+    } catch (error) {
+      setZipStatus(
+        error instanceof Error
+          ? `Error leyendo ZIP: ${error.message}`
+          : "Error leyendo ZIP."
+      );
+    }
   };
 
   const handleRecoveredFileUpload = (
@@ -179,6 +282,23 @@ export default function MissingEvidenceRecoveryPage() {
           }}
         >
           <form onSubmit={analyze}>
+            <label style={{ display: "block", fontWeight: 800, marginBottom: 8 }}>
+              Subir exportacion ZIP
+            </label>
+            <input
+              accept=".zip,application/zip,application/x-zip-compressed"
+              onChange={handleZipUpload}
+              style={{
+                ...inputStyle,
+                fontFamily: "inherit",
+                resize: "none",
+              }}
+              type="file"
+            />
+            <p style={{ color: "#64748b", lineHeight: 1.5, marginTop: -8 }}>
+              Lee la estructura interna del ZIP, indexa todos los archivos y
+              analiza automaticamente TXT, CSV y JSON como chats exportados.
+            </p>
             <LabeledTextarea
               label="Texto de chats exportados"
               onChange={setChatText}
@@ -264,6 +384,16 @@ export default function MissingEvidenceRecoveryPage() {
             }}
           >
             <h2 style={{ marginTop: 0 }}>Resumen</h2>
+            <p
+              style={{
+                background: "#1e293b",
+                borderRadius: 12,
+                lineHeight: 1.5,
+                padding: 12,
+              }}
+            >
+              {zipStatus}
+            </p>
             {summary.map(([label, value]) => (
               <div
                 key={label}
@@ -348,6 +478,78 @@ function buildReport(
       })),
     ],
   });
+}
+
+function buildZipRecoveredRows(
+  chatText: string,
+  exportedFilesText: string
+): RecoveryCandidateRow[] {
+  const chats: ChatExport[] = [{ chat: "CHAT_EXPORT", text: chatText }];
+  const exportedFiles = parseLines(exportedFilesText).map((line) => ({
+    name: line.split(/[\\/]/).pop() ?? line,
+    path: line,
+  }));
+
+  return buildZipRecoveredRowsFromChats(chats, exportedFiles);
+}
+
+function buildZipRecoveredRowsFromChats(
+  chats: ChatExport[],
+  exportedFiles: ExportedFile[]
+): RecoveryCandidateRow[] {
+  const exportedByName = new Map(
+    exportedFiles.map((file) => [normalizeDownloadName(file.name), file])
+  );
+  const rows = chats
+    .flatMap((chat) => extractMentionedAttachments(chat))
+    .flatMap((attachment) => {
+      const matchedFile = exportedByName.get(
+        normalizeDownloadName(attachment.nombre_archivo)
+      );
+
+      if (!matchedFile) {
+        return [];
+      }
+
+      return [
+        {
+          nombre_archivo: attachment.nombre_archivo,
+          tipo: attachment.tipo,
+          ruta_candidata: matchedFile.path ?? matchedFile.name,
+          carpeta_detectada: "ZIP",
+          prioridad: 100,
+          motivo_prioridad: "archivo fisico presente en ZIP",
+          estado: "COPY_CANDIDATE" as const,
+        },
+      ];
+    });
+
+  return dedupeRecoveredRows(rows);
+}
+
+function mergeRecoveredRows(
+  zipRows: RecoveryCandidateRow[],
+  candidateRows: RecoveryCandidateRow[]
+): RecoveryCandidateRow[] {
+  return dedupeRecoveredRows([...zipRows, ...candidateRows]);
+}
+
+function dedupeRecoveredRows(rows: RecoveryCandidateRow[]): RecoveryCandidateRow[] {
+  const seen = new Set<string>();
+  const result: RecoveryCandidateRow[] = [];
+
+  for (const row of rows) {
+    const key = getRecoveredKey(row);
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(row);
+  }
+
+  return result;
 }
 
 function parseLines(value: string): string[] {
@@ -683,6 +885,10 @@ function normalizeDownloadName(fileName: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+function normalizeZipPath(path: string): string {
+  return path.replace(/\\/g, "/").toLowerCase();
 }
 
 function downloadCsv(fileName: string, rows: object[]) {
