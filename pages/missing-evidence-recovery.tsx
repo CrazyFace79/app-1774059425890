@@ -1,5 +1,5 @@
 import type { CSSProperties, ChangeEvent, FormEvent } from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import {
   extractMentionedAttachments,
@@ -12,17 +12,11 @@ import type {
   RecoveryCandidateRow,
 } from "../missing-evidence-recovery";
 
-const sampleChat = `2026-06-21 12:42
-Cliente: Te paso adjunto MENU'S HOTEL VILLA CEUTI.pdf
-Otro archivo: booking_invoice_villa_ceuti.xlsx
-Imagen enviada: reserva_hotel_ceuti.png`;
-
-const sampleExportedFiles = `chat.txt
-reserva_hotel_ceuti.png`;
-
-const sampleCandidateFiles = `C:\\Users\\Usuario\\Downloads\\MENU'S HOTEL VILLA CEUTI.pdf
-C:\\Users\\Usuario\\Documents\\booking_invoice_villa_ceuti.xlsx
-C:\\Users\\Usuario\\OneDrive\\Travel\\MENU'S HOTEL VILLA CEUTI.pdf`;
+const EMPTY_REPORT = recoverMissingEvidence({
+  chats: [],
+  candidateFiles: [],
+  exportedFiles: [],
+});
 
 const sectionStyle: CSSProperties = {
   background: "#ffffff",
@@ -55,10 +49,33 @@ type ZipFileRecord = {
   sizeBytes: number;
 };
 
+type LocalFileRecord = {
+  file: File;
+  name: string;
+  path: string;
+};
+
+type DirectoryHandleLike = {
+  kind: "directory";
+  name: string;
+  values: () => AsyncIterable<FileHandleLike | DirectoryHandleLike>;
+};
+
+type FileHandleLike = {
+  kind: "file";
+  name: string;
+  getFile: () => Promise<File>;
+};
+
+type WindowWithDirectoryPicker = Window & {
+  showDirectoryPicker?: () => Promise<DirectoryHandleLike>;
+};
+
 export default function MissingEvidenceRecoveryPage() {
-  const [chatText, setChatText] = useState(sampleChat);
-  const [exportedFilesText, setExportedFilesText] = useState(sampleExportedFiles);
-  const [candidateFilesText, setCandidateFilesText] = useState(sampleCandidateFiles);
+  const directoryInputRef = useRef<HTMLInputElement | null>(null);
+  const [chatText, setChatText] = useState("");
+  const [exportedFilesText, setExportedFilesText] = useState("");
+  const [candidateFilesText, setCandidateFilesText] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedRecoveredFile[]>([]);
   const [selectedRecoveredKeys, setSelectedRecoveredKeys] = useState<string[]>([]);
   const [zipStatus, setZipStatus] = useState("Ningun ZIP cargado.");
@@ -66,8 +83,16 @@ export default function MissingEvidenceRecoveryPage() {
   const [zipRecoveredRows, setZipRecoveredRows] = useState<RecoveryCandidateRow[]>(
     []
   );
-  const [report, setReport] = useState<MissingEvidenceRecoveryReport>(() =>
-    buildReport(sampleChat, sampleExportedFiles, sampleCandidateFiles, [])
+  const [realScanStatus, setRealScanStatus] = useState(
+    "Modo real listo. Pulsa SCAN REAL SYSTEM y selecciona una carpeta."
+  );
+  const [realScanStats, setRealScanStats] = useState({
+    scanned: 0,
+    found: 0,
+    recovered: 0,
+  });
+  const [report, setReport] = useState<MissingEvidenceRecoveryReport>(
+    EMPTY_REPORT
   );
   const lostFiles = useMemo(
     () =>
@@ -110,6 +135,9 @@ export default function MissingEvidenceRecoveryPage() {
 
   const summary = useMemo(
     () => [
+      ["ARCHIVOS ESCANEADOS", realScanStats.scanned],
+      ["ARCHIVOS ENCONTRADOS", realScanStats.found],
+      ["ARCHIVOS RECUPERADOS", realScanStats.recovered],
       ["ADJUNTOS MENCIONADOS", report.stats.mentionedAttachments],
       ["ADJUNTOS FALTANTES", report.stats.missingAttachments],
       ["COPIAS CANDIDATAS", report.stats.possibleCopiesFound],
@@ -118,7 +146,15 @@ export default function MissingEvidenceRecoveryPage() {
       ["FALTANTES PRIORIDAD ALTA", report.stats.highPriorityMissing],
       ["ARCHIVOS SUBIDOS PARA DESCARGA", uploadedFiles.length],
     ],
-    [report, uploadedFiles.length, zipFileRecords.length, zipRecoveredRows.length]
+    [
+      report,
+      realScanStats.found,
+      realScanStats.recovered,
+      realScanStats.scanned,
+      uploadedFiles.length,
+      zipFileRecords.length,
+      zipRecoveredRows.length,
+    ]
   );
 
   const analyze = (event: FormEvent<HTMLFormElement>) => {
@@ -127,6 +163,55 @@ export default function MissingEvidenceRecoveryPage() {
       buildReport(chatText, exportedFilesText, candidateFilesText, uploadedFiles)
     );
     setZipRecoveredRows(buildZipRecoveredRows(chatText, exportedFilesText));
+  };
+
+  const scanRealSystem = async () => {
+    setSelectedRecoveredKeys([]);
+
+    if ((window as WindowWithDirectoryPicker).showDirectoryPicker) {
+      try {
+        setRealScanStatus("Selecciona tu carpeta de usuario, Downloads, Documents, Desktop, OneDrive, Google Drive o WhatsApp exports.");
+        const directoryHandle = await (
+          window as WindowWithDirectoryPicker
+        ).showDirectoryPicker?.();
+
+        if (!directoryHandle) {
+          return;
+        }
+
+        setRealScanStatus(`Escaneando carpeta: ${directoryHandle.name}...`);
+        const files = await collectDirectoryFiles(directoryHandle);
+        await applyRealFilesScan(files, `Escaneo real: ${directoryHandle.name}`);
+      } catch (error) {
+        setRealScanStatus(
+          error instanceof Error
+            ? `Escaneo cancelado o bloqueado: ${error.message}`
+            : "Escaneo cancelado o bloqueado."
+        );
+      }
+
+      return;
+    }
+
+    setRealScanStatus(
+      "Tu navegador requiere seleccionar una carpeta mediante el selector de archivos."
+    );
+    directoryInputRef.current?.setAttribute("webkitdirectory", "");
+    directoryInputRef.current?.click();
+  };
+
+  const handleDirectoryFallback = async (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const files = Array.from(event.target.files ?? []).map((file) => ({
+      file,
+      name: file.name,
+      path:
+        (file as File & { webkitRelativePath?: string }).webkitRelativePath ||
+        file.name,
+    }));
+
+    await applyRealFilesScan(files, "Escaneo real desde carpeta seleccionada");
   };
 
   const handleZipUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -172,7 +257,11 @@ export default function MissingEvidenceRecoveryPage() {
           sizeBytes: record.sizeBytes,
         })),
       });
-      const recoveredRows = buildZipRecoveredRowsFromChats(chatExports, fileRecords);
+      const recoveredRows = buildZipRecoveredRowsFromChats(
+        chatExports,
+        fileRecords,
+        "ZIP"
+      );
       const recoveredPathSet = new Set(
         recoveredRows.map((row) => normalizeZipPath(row.ruta_candidata))
       );
@@ -199,6 +288,11 @@ export default function MissingEvidenceRecoveryPage() {
       setZipRecoveredRows(recoveredRows);
       uploadedFiles.forEach((uploadedFile) => URL.revokeObjectURL(uploadedFile.url));
       setUploadedFiles(zipRecoveredFiles);
+      setRealScanStats({
+        scanned: fileRecords.length,
+        found: fileRecords.length,
+        recovered: recoveredRows.length,
+      });
       setReport(nextReport);
       setZipStatus(
         `ZIP analizado: ${fileRecords.length} archivos indexados, ${readableEntries.length} TXT/CSV/JSON leidos, ${recoveredRows.length} adjuntos recuperados.`
@@ -234,6 +328,66 @@ export default function MissingEvidenceRecoveryPage() {
         candidateFilesText,
         nextUploadedFiles
       )
+    );
+  };
+
+  const applyRealFilesScan = async (
+    files: LocalFileRecord[],
+    statusPrefix: string
+  ) => {
+    const fileRecords = files.map((record) => ({
+      name: record.name,
+      path: record.path,
+      sizeBytes: record.file.size,
+    }));
+    const readableFiles = files.filter((record) =>
+      /\.(txt|csv|json)$/i.test(record.name)
+    );
+    const chatExports: ChatExport[] = await Promise.all(
+      readableFiles.map(async (record) => ({
+        chat: record.path,
+        sourceFile: record.path,
+        text: await record.file.text(),
+      }))
+    );
+    const downloadableFiles = files.filter((record) =>
+      /\.(pdf|xlsx|jpe?g|png)$/i.test(record.name)
+    );
+    const nextUploadedFiles = downloadableFiles.map((record) => ({
+      name: record.name,
+      size: record.file.size,
+      type: record.file.type || "application/octet-stream",
+      url: URL.createObjectURL(record.file),
+    }));
+    const nextChatText = chatExports
+      .map((chat) => `--- ${chat.chat} ---\n${chat.text}`)
+      .join("\n\n");
+    const nextFilesText = fileRecords.map((record) => record.path).join("\n");
+    const nextReport = recoverMissingEvidence({
+      chats: chatExports,
+      exportedFiles: fileRecords,
+      candidateFiles: fileRecords,
+    });
+    const recoveredRows = buildZipRecoveredRowsFromChats(
+      chatExports,
+      fileRecords,
+      "Carpeta seleccionada"
+    );
+
+    uploadedFiles.forEach((file) => URL.revokeObjectURL(file.url));
+    setUploadedFiles(nextUploadedFiles);
+    setChatText(nextChatText);
+    setExportedFilesText(nextFilesText);
+    setCandidateFilesText(nextFilesText);
+    setZipRecoveredRows(recoveredRows);
+    setReport(nextReport);
+    setRealScanStats({
+      scanned: files.length,
+      found: fileRecords.length,
+      recovered: recoveredRows.length,
+    });
+    setRealScanStatus(
+      `${statusPrefix}: ${files.length} archivos escaneados, ${downloadableFiles.length} PDF/XLSX/imagenes cargados en la interfaz, ${recoveredRows.length} adjuntos recuperados.`
     );
   };
 
@@ -282,6 +436,27 @@ export default function MissingEvidenceRecoveryPage() {
           }}
         >
           <form onSubmit={analyze}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+              <button
+                onClick={scanRealSystem}
+                style={{ ...buttonStyle, background: "#dc2626" }}
+                type="button"
+              >
+                SCAN REAL SYSTEM
+              </button>
+              <input
+                multiple
+                onChange={handleDirectoryFallback}
+                ref={directoryInputRef}
+                style={{ display: "none" }}
+                type="file"
+              />
+            </div>
+            <p style={{ color: "#64748b", lineHeight: 1.5 }}>
+              Modo real: selecciona una carpeta fisica. El navegador no permite
+              acceder automaticamente a C:\ ni detectar el usuario Windows sin tu
+              permiso.
+            </p>
             <label style={{ display: "block", fontWeight: 800, marginBottom: 8 }}>
               Subir exportacion ZIP
             </label>
@@ -392,6 +567,16 @@ export default function MissingEvidenceRecoveryPage() {
                 padding: 12,
               }}
             >
+              {realScanStatus}
+            </p>
+            <p
+              style={{
+                background: "#1e293b",
+                borderRadius: 12,
+                lineHeight: 1.5,
+                padding: 12,
+              }}
+            >
               {zipStatus}
             </p>
             {summary.map(([label, value]) => (
@@ -490,12 +675,13 @@ function buildZipRecoveredRows(
     path: line,
   }));
 
-  return buildZipRecoveredRowsFromChats(chats, exportedFiles);
+  return buildZipRecoveredRowsFromChats(chats, exportedFiles, "Manual");
 }
 
 function buildZipRecoveredRowsFromChats(
   chats: ChatExport[],
-  exportedFiles: ExportedFile[]
+  exportedFiles: ExportedFile[],
+  sourceLabel: string
 ): RecoveryCandidateRow[] {
   const exportedByName = new Map(
     exportedFiles.map((file) => [normalizeDownloadName(file.name), file])
@@ -516,9 +702,9 @@ function buildZipRecoveredRowsFromChats(
           nombre_archivo: attachment.nombre_archivo,
           tipo: attachment.tipo,
           ruta_candidata: matchedFile.path ?? matchedFile.name,
-          carpeta_detectada: "ZIP",
+          carpeta_detectada: sourceLabel,
           prioridad: 100,
-          motivo_prioridad: "archivo fisico presente en ZIP",
+          motivo_prioridad: `archivo fisico presente en ${sourceLabel}`,
           estado: "COPY_CANDIDATE" as const,
         },
       ];
@@ -550,6 +736,31 @@ function dedupeRecoveredRows(rows: RecoveryCandidateRow[]): RecoveryCandidateRow
   }
 
   return result;
+}
+
+async function collectDirectoryFiles(
+  directoryHandle: DirectoryHandleLike,
+  prefix = directoryHandle.name
+): Promise<LocalFileRecord[]> {
+  const files: LocalFileRecord[] = [];
+
+  for await (const entry of directoryHandle.values()) {
+    const entryPath = `${prefix}/${entry.name}`;
+
+    if (entry.kind === "file") {
+      const file = await entry.getFile();
+      files.push({
+        file,
+        name: file.name || entry.name,
+        path: entryPath,
+      });
+      continue;
+    }
+
+    files.push(...(await collectDirectoryFiles(entry, entryPath)));
+  }
+
+  return files;
 }
 
 function parseLines(value: string): string[] {
