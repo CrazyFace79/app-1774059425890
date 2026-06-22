@@ -83,6 +83,13 @@ export default function MissingEvidenceRecoveryPage() {
       ),
     [recoveredFiles, selectedRecoveredKeys, uploadedFiles]
   );
+  const selectedRecoveredRows = useMemo(
+    () =>
+      recoveredFiles.filter((row) =>
+        selectedRecoveredKeys.includes(getRecoveredKey(row))
+      ),
+    [recoveredFiles, selectedRecoveredKeys]
+  );
 
   const summary = useMemo(
     () => [
@@ -206,8 +213,9 @@ export default function MissingEvidenceRecoveryPage() {
             />
             <p style={{ color: "#64748b", lineHeight: 1.5, marginTop: -8 }}>
               Si subes aqui el archivo fisico original, aparecera en
-              ARCHIVOS_RECUPERADOS con boton de descarga. Una ruta tipo C:\ no se
-              puede descargar por si sola desde el navegador.
+              ARCHIVOS_RECUPERADOS con boton de descarga. Puedes seleccionar
+              cualquier fila; si no hay archivo fisico subido, el boton descarga
+              un CSV manifest con las rutas candidatas seleccionadas.
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
               <button style={buttonStyle} type="submit">
@@ -226,14 +234,19 @@ export default function MissingEvidenceRecoveryPage() {
                 Exportar CSV
               </button>
               <button
-                disabled={selectedUploadedFiles.length === 0}
-                onClick={() => downloadUploadedFiles(selectedUploadedFiles)}
+                disabled={selectedRecoveredRows.length === 0}
+                onClick={() =>
+                  downloadSelectedRecoveredFiles(
+                    selectedRecoveredRows,
+                    selectedUploadedFiles
+                  )
+                }
                 style={{
                   ...buttonStyle,
                   background:
-                    selectedUploadedFiles.length === 0 ? "#94a3b8" : "#16a34a",
+                    selectedRecoveredRows.length === 0 ? "#94a3b8" : "#16a34a",
                   cursor:
-                    selectedUploadedFiles.length === 0 ? "not-allowed" : "pointer",
+                    selectedRecoveredRows.length === 0 ? "not-allowed" : "pointer",
                 }}
                 type="button"
               >
@@ -276,6 +289,9 @@ export default function MissingEvidenceRecoveryPage() {
           title="ARCHIVOS_PERDIDOS"
         />
         <RecoveredFilesSection
+          onSelectAll={() =>
+            setSelectedRecoveredKeys(recoveredFiles.map(getRecoveredKey))
+          }
           onSelectAllDownloadable={() =>
             setSelectedRecoveredKeys(
               recoveredFiles
@@ -431,6 +447,7 @@ function ResultSection<T extends object>({
 }
 
 function RecoveredFilesSection({
+  onSelectAll,
   onSelectAllDownloadable,
   onToggleSelection,
   rows,
@@ -438,6 +455,7 @@ function RecoveredFilesSection({
   title,
   uploadedFiles,
 }: {
+  onSelectAll: () => void;
   onSelectAllDownloadable: () => void;
   onToggleSelection: (key: string) => void;
   rows: RecoveryCandidateRow[];
@@ -466,11 +484,33 @@ function RecoveredFilesSection({
         <h2 style={{ margin: 0 }}>{title}</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <button
+            disabled={rows.length === 0}
+            onClick={onSelectAll}
+            style={{
+              ...buttonStyle,
+              background: rows.length === 0 ? "#94a3b8" : "#dc2626",
+              cursor: rows.length === 0 ? "not-allowed" : "pointer",
+              padding: "10px 14px",
+            }}
+            type="button"
+          >
+            Seleccionar todos
+          </button>
+          <button
             disabled={!rows.some((row) => findUploadedFile(row.nombre_archivo, uploadedFiles))}
             onClick={onSelectAllDownloadable}
             style={{
               ...buttonStyle,
-              background: "#16a34a",
+              background: rows.some((row) =>
+                findUploadedFile(row.nombre_archivo, uploadedFiles)
+              )
+                ? "#16a34a"
+                : "#94a3b8",
+              cursor: rows.some((row) =>
+                findUploadedFile(row.nombre_archivo, uploadedFiles)
+              )
+                ? "pointer"
+                : "not-allowed",
               padding: "10px 14px",
             }}
             type="button"
@@ -521,7 +561,6 @@ function RecoveredFilesSection({
                   <td style={cellStyle}>
                     <input
                       checked={selectedKeys.includes(recoveredKey)}
-                      disabled={!uploadedFile}
                       onChange={() => onToggleSelection(recoveredKey)}
                       type="checkbox"
                     />
@@ -546,7 +585,7 @@ function RecoveredFilesSection({
                       </button>
                     ) : (
                       <span style={{ color: "#64748b" }}>
-                        Sube el archivo para descargarlo
+                        Seleccionable: descarga manifest CSV
                       </span>
                     )}
                   </td>
@@ -607,6 +646,33 @@ function downloadUploadedFiles(files: UploadedRecoveredFile[]) {
       document.body.removeChild(link);
     }, index * 250);
   });
+}
+
+function downloadSelectedRecoveredFiles(
+  rows: RecoveryCandidateRow[],
+  files: UploadedRecoveredFile[]
+) {
+  if (rows.length === 0) {
+    return;
+  }
+
+  downloadCsv(
+    "archivos-recuperados-seleccionados.csv",
+    rows.map((row) => ({
+      ...row,
+      archivo_fisico_subido: files.some(
+        (file) =>
+          normalizeDownloadName(file.name) ===
+          normalizeDownloadName(row.nombre_archivo)
+      )
+        ? "SI"
+        : "NO",
+    }))
+  );
+
+  if (files.length > 0) {
+    downloadUploadedFiles(files);
+  }
 }
 
 function normalizeDownloadName(fileName: string): string {
