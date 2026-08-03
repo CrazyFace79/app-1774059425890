@@ -1,0 +1,49 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700&display=swap");
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --ink: #13201c;
+  --fog: #e7f1ea;
+  --mist: rgba(231, 241, 234, 0.72);
+  --pine: #1f6a4f;
+  --pine-deep: #0f3d2f;
+  --amber: #e0a23a;
+  --amber-soft: #f3d08a;
+  --signal: #7dffb3;
+  --danger: #ff7a6e;
+  --panel: rgba(10, 28, 22, 0.55);
+  --line: rgba(231, 241, 234, 0.14);
+  --shadow: 0 30px 80px rgba(4, 16, 12, 0.45);
+}
+
+html,
+body,
+#__next {
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(224, 162, 58, 0.18), transparent 32%),
+    radial-gradient(circle at 82% 18%, rgba(125, 255, 179, 0.12), transparent 28%),
+    linear-gradient(160deg, #071510 0%, #10261f 42%, #17362c 100%);
+  color: var(--fog);
+  font-family: "Manrope", sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
