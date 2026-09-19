@@ -47,22 +47,34 @@ export function StylesTab() {
   }, [loadPresets])
 
   const handleApplyPreset = async (preset: any) => {
+    const vocal = preset.vocal ?? preset.defaults?.vocal ?? "female"
+    const era = preset.era ?? preset.defaults?.era ?? "2000s"
+    const mood = preset.mood ?? preset.defaults?.mood ?? "euphoric"
     setPresetId(preset.id)
     setBpm(preset.bpm)
     setKey(preset.key)
-    setVocal(preset.vocal)
-    setEra(preset.era)
-    setMood(preset.mood)
+    setVocal(vocal)
+    setEra(era)
+    setMood(mood)
 
-    const generatedStyle = buildStyle({
-      bpm: preset.bpm,
-      key: preset.key,
-      vocal: preset.vocal,
-      era: preset.era,
-      mood: preset.mood,
-      flags: preset.flags,
-      referenceArtists: preset.referenceArtists,
-    })
+    const generatedStyle =
+      preset.styleLine ||
+      buildStyle({
+        bpm: preset.bpm,
+        key: preset.key,
+        vocal,
+        era,
+        mood,
+        stylePct: preset.defaults?.stylePct ?? 80,
+        weirdPct: preset.defaults?.weirdPct ?? 15,
+        toggles: {
+          introNoKick: preset.toggles?.introNoKick ?? preset.flags?.introWithoutKick ?? true,
+          acapellaOnly: preset.toggles?.acapellaOnly ?? preset.flags?.acapellaOnly ?? false,
+          noInstruments: preset.toggles?.noInstruments ?? preset.flags?.noInstruments ?? false,
+          dryVocals: preset.toggles?.dryVocals ?? preset.flags?.dryVocals ?? false,
+        },
+        referenceArtists: preset.referenceArtists ?? [],
+      })
 
     setStyle(generatedStyle)
     setStyleLine(generatedStyle)
@@ -322,11 +334,11 @@ export function StylesTab() {
                             name: preset.name,
                             bpm: preset.bpm.toString(),
                             key: preset.key,
-                            vocal: preset.vocal,
-                            era: preset.era,
-                            mood: preset.mood,
-                            description: preset.description,
-                            referenceArtists: preset.referenceArtists.join(", "),
+                            vocal: preset.vocal ?? preset.defaults?.vocal,
+                            era: preset.era ?? preset.defaults?.era,
+                            mood: preset.mood ?? preset.defaults?.mood,
+                            description: preset.description ?? preset.styleLine,
+                            referenceArtists: (preset.referenceArtists ?? []).join(", "),
                             flags: preset.flags,
                           })
                           setIsEditDialogOpen(true)
@@ -350,21 +362,27 @@ export function StylesTab() {
                     <span className="text-muted-foreground">Key:</span> {preset.key}
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Vocal:</span> {preset.vocal}
+                    <span className="text-muted-foreground">Vocal:</span> {preset.vocal ?? preset.defaults?.vocal}
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Era:</span> {preset.era}
+                    <span className="text-muted-foreground">Era:</span> {preset.era ?? preset.defaults?.era}
                   </div>
                 </div>
 
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Reference Artists:</p>
                   <div className="flex flex-wrap gap-1">
-                    {preset.referenceArtists.map((artist, index) => (
+                    {(preset.referenceArtists ?? []).map((artist, index) => (
                       <Badge key={index} variant="outline" className="text-xs">
                         {artist}
                       </Badge>
                     ))}
+                    {(preset.referenceArtists ?? []).length === 0 &&
+                      (preset.tags ?? []).map((tag: string) => (
+                        <Badge key={tag} variant="outline" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
                   </div>
                 </div>
 

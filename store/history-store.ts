@@ -35,11 +35,24 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     }
   },
 
-  addEntry: async (entryData) => {
+  addEntry: async (entryData: any) => {
+    const meta = entryData.metadata ?? {}
     const entry: HistoryEntry = {
-      ...entryData,
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
+      style: entryData.style ?? "",
+      lyrics: entryData.lyrics ?? "",
+      bpm: entryData.bpm ?? meta.bpm ?? 148,
+      key: entryData.key ?? meta.key ?? "D# minor",
+      presetId: entryData.presetId ?? "custom",
+      toggles: entryData.toggles ?? {
+        acapellaOnly: false,
+        noInstruments: false,
+        dryVocals: false,
+        introWithoutKick: true,
+      },
+      hash: entryData.hash ?? `${Date.now()}`,
+      pinned: entryData.pinned ?? false,
     }
 
     await db.history.add(entry)

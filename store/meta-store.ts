@@ -25,6 +25,8 @@ interface MetaState {
   setMood: (mood: string) => void
   setStylePercentage: (percentage: number) => void
   setWeirdnessPercentage: (percentage: number) => void
+  setStylePct: (percentage: number) => void
+  setWeirdPct: (percentage: number) => void
   setAcapellaOnly: (enabled: boolean) => void
   setNoInstruments: (enabled: boolean) => void
   setDryVocals: (enabled: boolean) => void
@@ -84,6 +86,8 @@ export const useMetaStore = create<MetaState>()(
         set({ weirdnessPercentage: percentage })
         get().updateStyleFromParams()
       },
+      setStylePct: (percentage) => get().setStylePercentage(percentage),
+      setWeirdPct: (percentage) => get().setWeirdnessPercentage(percentage),
       setAcapellaOnly: (enabled) => {
         set({ acapellaOnly: enabled })
         get().updateStyleFromParams()

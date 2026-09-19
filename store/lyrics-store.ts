@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
+import { formatLyricsForExport as formatLyricsText } from "@/lib/utils"
 
 export interface LyricsSection {
   id: string
@@ -10,11 +11,14 @@ export interface LyricsSection {
 
 interface LyricsState {
   sections: LyricsSection[]
+  styleLine: string
   validationErrors: Record<string, string[]>
   setSections: (sections: LyricsSection[]) => void
+  setStyleLine: (styleLine: string) => void
+  formatLyricsForExport: (sections?: LyricsSection[]) => string
   updateSection: (id: string, lines: string[]) => void
-  addSection: (section: LyricsSection) => void
-  removeSection: (id: string) => void
+  addSection: (section: LyricsSection | string, content?: string) => void
+  removeSection: (id: string | number) => void
   validateSection: (id: string) => void
   validateAll: () => boolean
 }
@@ -23,21 +27,55 @@ export const useLyricsStore = create<LyricsState>()(
   persist(
     (set, get) => ({
       sections: [],
+      styleLine: "",
       validationErrors: {},
       setSections: (sections) => set({ sections }),
+      setStyleLine: (styleLine) => set({ styleLine }),
+      formatLyricsForExport: (sections) => formatLyricsText(sections ?? get().sections),
       updateSection: (id, lines) => {
         const sections = get().sections.map((section) => (section.id === id ? { ...section, lines } : section))
         set({ sections })
         get().validateSection(id)
       },
-      addSection: (section) => {
+      addSection: (section, content) => {
+        if (typeof section === "string") {
+          const type = section.toLowerCase().includes("chorus")
+            ? "chorus"
+            : section.toLowerCase().includes("bridge")
+              ? "bridge"
+              : section.toLowerCase().includes("outro")
+                ? "outro"
+                : section.toLowerCase().includes("intro")
+                  ? "intro"
+                  : section.toLowerCase().includes("pre")
+                    ? "pre-chorus"
+                    : "verse"
+          set((state) => ({
+            sections: [
+              ...state.sections,
+              {
+                id: crypto.randomUUID(),
+                type,
+                lines: (content ?? "").split("\n").filter((line) => line.length > 0),
+                errors: [],
+              },
+            ],
+          }))
+          return
+        }
         set((state) => ({ sections: [...state.sections, section] }))
       },
       removeSection: (id) => {
-        set((state) => ({
-          sections: state.sections.filter((s) => s.id !== id),
-          validationErrors: Object.fromEntries(Object.entries(state.validationErrors).filter(([key]) => key !== id)),
-        }))
+        set((state) => {
+          const targetId = typeof id === "number" ? state.sections[id]?.id : id
+          if (!targetId) return state
+          return {
+            sections: state.sections.filter((s) => s.id !== targetId),
+            validationErrors: Object.fromEntries(
+              Object.entries(state.validationErrors).filter(([key]) => key !== targetId),
+            ),
+          }
+        })
       },
       validateSection: (id) => {
         const section = get().sections.find((s) => s.id === id)
