@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "AI Look Studio",
+    "slug": "ai-look-studio",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "lookstudio",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "backgroundColor": "#07080C",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lookstudio.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "AI Look Studio usa la cámara para fotografiar a la persona que quieres editar.",
+        "NSPhotoLibraryUsageDescription": "AI Look Studio accede a tu galería para importar la foto que quieres editar.",
+        "NSPhotoLibraryAddUsageDescription": "AI Look Studio guarda en tu galería las imágenes y vídeos que exportas.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.lookstudio.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#07080C",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": ["CAMERA", "READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "READ_EXTERNAL_STORAGE"],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-image",
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-video",
+      "expo-status-bar",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AI Look Studio accede a tu galería para importar la foto que quieres editar.",
+          "cameraPermission": "AI Look Studio usa la cámara para fotografiar a la persona que quieres editar."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "AI Look Studio guarda en tu galería las imágenes y vídeos que exportas.",
+          "savePhotosPermission": "AI Look Studio guarda en tu galería las imágenes y vídeos que exportas.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "ai-look-studio",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w @lookstudio/api",
+    "start:api": "npm run start -w @lookstudio/api",
+    "start:mobile": "npm run start -w @lookstudio/mobile",
+    "typecheck": "tsc -p packages/domain/tsconfig.json --noEmit && tsc -p apps/api/tsconfig.json --noEmit && tsc -p apps/mobile/tsconfig.json --noEmit",
+    "test": "node --disable-warning=ExperimentalWarning ./node_modules/tsx/dist/cli.mjs --test packages/domain/test/*.test.ts apps/api/test/*.test.ts apps/mobile/test/*.test.ts",
+    "lint": "eslint packages apps/api && npm run lint -w @lookstudio/mobile",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@types/node": "^22.18.0",
+    "eslint": "^9.36.0",
+    "tsx": "^4.20.5",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.44.0"
+  }
+}
