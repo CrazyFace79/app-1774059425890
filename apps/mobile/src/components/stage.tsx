@@ -1,11 +1,30 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { createElement, useEffect, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { hydrateLocalUri } from '../storage/files';
 import { colors } from '../theme';
 import { TrackSlider } from './controls';
+
+function useRenderableUri(uri: string | null): string {
+  const [value, setValue] = useState(!uri || uri.startsWith('idb:') ? '' : uri);
+  useEffect(() => {
+    if (!uri) {
+      setValue('');
+      return;
+    }
+    let alive = true;
+    void hydrateLocalUri(uri).then((next) => {
+      if (alive) setValue(next);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [uri]);
+  return value;
+}
 
 export function Stage({
   currentUri,
@@ -23,6 +42,9 @@ export function Stage({
   ratio: number;
 }) {
   const [width, setWidth] = useState(0);
+  const shown = useRenderableUri(hold && originalUri ? originalUri : currentUri);
+  const before = useRenderableUri(originalUri);
+  const after = useRenderableUri(currentUri);
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const tx = useSharedValue(0);
@@ -48,7 +70,6 @@ export function Stage({
   const style = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
   }));
-  const shown = hold && originalUri ? originalUri : currentUri;
   const video = mime.startsWith('video/') && !hold && !compare;
 
   return (
@@ -60,14 +81,14 @@ export function Stage({
           <Animated.View style={[styles.fill, style]}>
             {compare && originalUri ? (
               <View style={styles.fill}>
-                <Image source={{ uri: currentUri }} style={StyleSheet.absoluteFill} contentFit="contain" />
+                {after ? <Image source={{ uri: after }} style={StyleSheet.absoluteFill} contentFit="contain" /> : null}
                 <View style={[styles.beforeClip, { width: width * ratio }]}>
-                  <Image source={{ uri: originalUri }} style={{ width, height: '100%' }} contentFit="contain" />
+                  {before ? <Image source={{ uri: before }} style={{ width, height: '100%' }} contentFit="contain" /> : null}
                 </View>
               </View>
-            ) : (
+            ) : shown ? (
               <Image source={{ uri: shown }} style={styles.fill} contentFit="contain" />
-            )}
+            ) : null}
           </Animated.View>
         </GestureDetector>
       )}
@@ -77,6 +98,22 @@ export function Stage({
 }
 
 function Clip({ uri }: { uri: string }) {
+  if (!uri) return null;
+  if (Platform.OS === 'web') return <WebClip uri={uri} />;
+  return <NativeClip uri={uri} />;
+}
+
+function WebClip({ uri }: { uri: string }) {
+  return createElement('video', {
+    src: uri,
+    controls: true,
+    loop: true,
+    playsInline: true,
+    style: { width: '100%', height: '100%', objectFit: 'contain', backgroundColor: '#05060A' },
+  });
+}
+
+function NativeClip({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, (item) => {
     item.loop = true;
   });

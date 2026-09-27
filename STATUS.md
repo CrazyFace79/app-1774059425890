@@ -7,12 +7,13 @@
 - Proveedor local procedural y adaptador HTTP que exige clave de entorno y opt-out de entrenamiento.
 - Tests de dominio, de la API (pelo, bigote, original intacto, vídeo, reel, consentimiento, créditos) y del payload de la app. 24 pruebas en verde.
 - App Expo en un solo código: inicio en español, consentimiento, proyectos, editor (zoom, comparar, mantener original, deshacer, rehacer, resets, duplicar, exportar, compartir), todas las herramientas desde datos, máscara auto/manual, revisión con conservar / descartar / reintentar / variación, animar y reel.
+- Recorrido en Expo web: importar, pelo ondulado, bigote, conservar, historial con deshacer, exportar, animar y previsualizar un reel. La etiqueta visible fue «Procesado en local. No es IA generativa.»
 - `MONETIZATION_ENABLED=false` no bloquea herramientas. Compras desactivadas en la UI.
 - ESLint y `tsc` estricto del dominio, la API y la app.
 
 ## IN PROGRESS
 
-- Recorrido manual en Expo web del flujo crear → importar → pelo → conservar → bigote → historial → exportar → animar → reel.
+- Nada del flujo principal. El siguiente trabajo depende de un SDK o de claves de proveedor.
 
 ## BLOCKED
 
@@ -22,6 +23,6 @@
 
 ## NEXT
 
-- Cerrar el recorrido web y anotar aquí lo que el emulador no puede demostrar (cámara nativa, galería del sistema, binarios de tienda).
 - Cuando haya SDK, `eas build` con los perfiles de `apps/mobile/eas.json`.
 - Conectar un proveedor HTTP solo por entorno, sin cambiar la UI de las herramientas.
+- La cámara nativa y guardar en la galería del teléfono no se pueden ejercitar en el navegador. En web, Galería usa el selector de archivos y Exportar descarga el archivo.

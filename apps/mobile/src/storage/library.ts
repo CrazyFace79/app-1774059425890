@@ -435,7 +435,7 @@ export async function discardOperation(operationId: string): Promise<void> {
   if (operation.output_asset_id) {
     const asset = await getAsset(operation.output_asset_id);
     if (asset && asset.kind === 'pending') {
-      deleteUri(asset.local_uri);
+      await deleteUri(asset.local_uri);
       const db = await getDb();
       await db.runAsync('UPDATE assets SET bytes_deleted = 1 WHERE id = ?', asset.id);
     }
@@ -518,7 +518,7 @@ export async function duplicateProject(sourceId: string): Promise<string> {
 
 export async function deleteProject(projectId: string): Promise<void> {
   const db = await getDb();
-  deleteProjectTree(projectId);
+  await deleteProjectTree(projectId);
   await db.runAsync('UPDATE projects SET deleted = 1, updated_at = ? WHERE id = ?', nowIso(), projectId);
 }
 
@@ -526,14 +526,14 @@ export async function deleteOriginalBytes(projectId: string): Promise<void> {
   const assets = await listAssets(projectId);
   const original = assets.find((asset) => asset.kind === 'original' && !asset.bytes_deleted);
   if (!original) throw new Error('No hay original para borrar.');
-  deleteUri(original.local_uri);
+  await deleteUri(original.local_uri);
   const db = await getDb();
   await db.runAsync('UPDATE assets SET bytes_deleted = 1, local_uri = ? WHERE id = ?', '', original.id);
 }
 
 export async function wipeLocal(): Promise<void> {
   const projects = await listProjects();
-  for (const project of projects) deleteProjectTree(project.id);
+  for (const project of projects) await deleteProjectTree(project.id);
   const db = await getDb();
   await db.execAsync('DELETE FROM operations; DELETE FROM versions; DELETE FROM assets; DELETE FROM reels; DELETE FROM projects; DELETE FROM settings;');
 }
@@ -547,7 +547,7 @@ export async function sweepRetention(): Promise<number> {
     for (const asset of assets) {
       if (asset.kind === 'original' || asset.bytes_deleted) continue;
       if (!retentionExpired(asset.created_at, project.retention_days, Date.now())) continue;
-      deleteUri(asset.local_uri);
+      await deleteUri(asset.local_uri);
       await db.runAsync('UPDATE assets SET bytes_deleted = 1 WHERE id = ?', asset.id);
       removed += 1;
     }

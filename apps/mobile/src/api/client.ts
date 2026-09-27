@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
-import { File } from 'expo-file-system';
 import type { ReelTimeline } from '@lookstudio/domain';
+import { readUriBytes } from '../storage/files';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -80,9 +80,12 @@ async function readError(response: Response): Promise<ApiError> {
   }
 }
 
-function appendLocalFile(form: FormData, field: string, uri: string, name: string, mime: string): void {
+async function appendLocalFile(form: FormData, field: string, uri: string, name: string, mime: string): Promise<void> {
   if (Platform.OS === 'web') {
-    form.append(field, new File(uri), name);
+    const bytes = await readUriBytes(uri);
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    form.append(field, new Blob([copy], { type: mime }), name);
     return;
   }
   form.append(field, { uri, name, type: mime } as unknown as Blob);
@@ -160,7 +163,7 @@ export class LookClient {
   async uploadOriginal(projectId: string, uri: string, name: string, mime: string): Promise<void> {
     const form = new FormData();
     form.append('consent', 'true');
-    appendLocalFile(form, 'image', uri, name, mime);
+    await appendLocalFile(form, 'image', uri, name, mime);
     const response = await fetch(`${trimBase(this.baseUrl)}/v1/projects/${projectId}/assets`, {
       method: 'POST',
       headers: this.headers(false),
@@ -173,7 +176,7 @@ export class LookClient {
     const form = new FormData();
     form.append('consent', 'true');
     form.append('payload', JSON.stringify(payload));
-    appendLocalFile(form, 'image', uri, name, mime);
+    await appendLocalFile(form, 'image', uri, name, mime);
     const response = await fetch(`${trimBase(this.baseUrl)}/v1/jobs`, {
       method: 'POST',
       headers: this.headers(false),
@@ -192,7 +195,7 @@ export class LookClient {
     const form = new FormData();
     form.append('consent', 'true');
     form.append('payload', JSON.stringify(payload));
-    appendLocalFile(form, 'image', uri, name, mime);
+    await appendLocalFile(form, 'image', uri, name, mime);
     const response = await fetch(`${trimBase(this.baseUrl)}/v1/masks/preview`, {
       method: 'POST',
       headers: this.headers(false),
@@ -210,8 +213,8 @@ export class LookClient {
     const form = new FormData();
     form.append('consent', 'true');
     form.append('payload', JSON.stringify(payload));
-    for (const clip of clips) appendLocalFile(form, `clip_${clip.id}`, clip.uri, clip.name, clip.mime);
-    if (audio) appendLocalFile(form, 'audio', audio.uri, audio.name, audio.mime);
+    for (const clip of clips) await appendLocalFile(form, `clip_${clip.id}`, clip.uri, clip.name, clip.mime);
+    if (audio) await appendLocalFile(form, 'audio', audio.uri, audio.name, audio.mime);
     const response = await fetch(`${trimBase(this.baseUrl)}/v1/reels/render`, {
       method: 'POST',
       headers: this.headers(false),
@@ -243,7 +246,7 @@ export class LookClient {
     const form = new FormData();
     form.append('consent', 'true');
     form.append('payload', JSON.stringify({ projectId, visible: true, disclosure }));
-    appendLocalFile(form, 'image', uri, name, mime);
+    await appendLocalFile(form, 'image', uri, name, mime);
     const response = await fetch(`${trimBase(this.baseUrl)}/v1/exports/stamp`, {
       method: 'POST',
       headers: this.headers(false),

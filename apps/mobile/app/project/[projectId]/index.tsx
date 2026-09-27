@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import { TOOL_CATALOG, lineage } from '@lookstudio/domain';
 import { CompareBar, Stage } from '../../../src/components/stage';
 import { Banner, Button, Empty, Field, Loading, Muted, Row, Screen } from '../../../src/components/ui';
@@ -11,6 +10,7 @@ import { useProject } from '../../../src/hooks/useProject';
 import { disclosureLabel, errorMessage, latestImageAsset, oneParam } from '../../../src/pure/flow';
 import { exportImage } from '../../../src/services/jobs';
 import { pickImage } from '../../../src/services/picker';
+import { downloadInBrowser, hydrateLocalUri } from '../../../src/storage/files';
 import {
   deleteOriginalBytes,
   deleteProject,
@@ -192,8 +192,10 @@ export default function EditorScreen() {
               online: app.online && app.serverUp,
             });
             setNote(exported.note);
+            const ready = await hydrateLocalUri(exported.uri);
+            if (Platform.OS === 'web') downloadInBrowser(ready, shown.mime.startsWith('video/') ? 'lookstudio.mp4' : 'lookstudio.png');
             if (await Sharing.isAvailableAsync()) {
-              await Sharing.shareAsync(exported.uri, { mimeType: shown.mime.startsWith('video/') ? 'video/mp4' : 'image/png', dialogTitle: 'Exportar' });
+              await Sharing.shareAsync(ready, { mimeType: shown.mime.startsWith('video/') ? 'video/mp4' : 'image/png', dialogTitle: 'Exportar' });
             }
           })
         }
@@ -205,9 +207,14 @@ export default function EditorScreen() {
         onPress={() =>
           void run(async () => {
             if (!shown) return;
-            const permission = await requestPermissionsAsync(true);
+            if (Platform.OS === 'web') {
+              setNote('En el navegador usa Exportar. Guardar en la galería del teléfono está en Android e iOS.');
+              return;
+            }
+            const media = await import('expo-media-library');
+            const permission = await media.requestPermissionsAsync(true);
             if (!permission.granted) throw new Error('Hace falta permiso para guardar en la galería.');
-            await Asset.create(shown.local_uri);
+            await media.Asset.create(shown.local_uri);
             setNote('Guardado en la galería del dispositivo.');
           })
         }

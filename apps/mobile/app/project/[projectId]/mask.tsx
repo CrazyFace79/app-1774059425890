@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
@@ -8,6 +8,7 @@ import { Banner, Button, Chip, Loading, Muted, Row, Screen, Title } from '../../
 import { useApp } from '../../../src/context/AppContext';
 import { useProject } from '../../../src/hooks/useProject';
 import { errorMessage, latestImageAsset, oneParam } from '../../../src/pure/flow';
+import { hydrateLocalUri } from '../../../src/storage/files';
 
 export default function MaskScreen() {
   const params = useLocalSearchParams<{ projectId: string; tool?: string }>();
@@ -22,6 +23,7 @@ export default function MaskScreen() {
   const [overlay, setOverlay] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [photoUri, setPhotoUri] = useState('');
   const draft = useRef<Stroke | null>(null);
   const strokes = useRef(mask.strokes);
   strokes.current = mask.strokes;
@@ -29,6 +31,19 @@ export default function MaskScreen() {
   maskRef.current = mask;
 
   const image = view?.history ? latestImageAsset(view.history, view.assets) : null;
+  useEffect(() => {
+    if (!image || image.bytes_deleted) {
+      setPhotoUri('');
+      return;
+    }
+    let alive = true;
+    void hydrateLocalUri(image.local_uri).then((uri) => {
+      if (alive) setPhotoUri(uri);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [image]);
   const frame = containRect(layout.w, layout.h, image?.width || 3, image?.height || 4);
   const frameRef = useRef(frame);
   frameRef.current = frame;
@@ -85,7 +100,7 @@ export default function MaskScreen() {
         onLayout={(event) => setLayout({ w: event.nativeEvent.layout.width, h: event.nativeEvent.layout.height })}
         {...responder.panHandlers}
       >
-        <Image source={{ uri: image.local_uri }} style={StyleSheet.absoluteFill} contentFit="contain" />
+        <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} contentFit="contain" />
         {overlay ? <Image source={{ uri: `data:image/png;base64,${overlay}` }} style={StyleSheet.absoluteFill} contentFit="contain" /> : null}
         {painted.flatMap((stroke, strokeIndex) =>
           stroke.points.map((point, pointIndex) => {

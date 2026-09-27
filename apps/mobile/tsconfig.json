@@ -3,9 +3,17 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@lookstudio/domain": ["../../packages/domain/src/index.ts"]
+      "@lookstudio/domain": [
+        "../../packages/domain/src/index.ts"
+      ]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
-  "exclude": ["test", "node_modules"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "test",
+    "node_modules"
+  ]
 }
