@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+web-build/
+apps/api/data/
+.env
+.env*.local
+*.tsbuildinfo
+.DS_Store
+apps/mobile/ios/
+apps/mobile/android/
+coverage/
+tmp/
+npm-debug.log*
+.cursor/
